@@ -6,7 +6,7 @@
 [![Sanity v3/v4/v5](https://img.shields.io/badge/sanity-v3%20%7C%20v4%20%7C%20v5-f03e2f)](https://www.sanity.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-![Deploy with Vercel — Production and Preview targets with live status](./docs/screenshot.png)
+![The Deploy tool inside Sanity Studio — Production and Preview targets each showing a live status badge, branch, commit SHA, deploy author, and a one-click Deploy button](https://raw.githubusercontent.com/Liiift-Studio/Deploy-Vercel-from-Sanity/main/docs/screenshot.png?v=1)
 
 ---
 
@@ -119,6 +119,28 @@ tools: (prev, { currentUser }) => {
 
 ## How it works
 
+```mermaid
+flowchart LR
+    subgraph studio["Sanity Studio"]
+        tool["Deploy tool"]
+    end
+    subgraph dataset["Sanity dataset"]
+        targets["vercel_deploy docs<br/>(deploy targets)"]
+        cfg["config.vercelDeploy doc<br/>(API token)"]
+    end
+    subgraph vercel["Vercel"]
+        hook["Deploy hook<br/>POST /v1/integrations/deploy/…"]
+        api["REST API<br/>/v6/deployments · /v2/.../events"]
+    end
+
+    tool -- "reads targets + token" --> targets
+    tool -- "reads token" --> cfg
+    tool -- "1 - click Deploy" --> hook
+    hook -- "queues a build" --> api
+    api -- "poll every 5s while active" --> tool
+    tool -. "toast on Ready / Error / Canceled" .-> tool
+```
+
 1. Deploy targets are stored as `vercel_deploy` documents in your Sanity dataset.
 2. The plugin fetches the last 10 deployments for each target from the Vercel API, filtered to those triggered by that hook.
 3. While a deployment is active (Queued / Initializing / Building), it polls every 5 seconds.
@@ -164,7 +186,7 @@ If "No stderr or stdout was captured" appears, the build may have failed before 
 
 ## Security
 
-**API token storage** — The Vercel API token is stored in a `config.vercelDeploy` Sanity document, readable by all authenticated studio users. Audit who has access to your Sanity project at sanity.io → Project → Members. If your studio includes untrusted editors, consider a server-side proxy that holds the token and exposes only a scoped deploy endpoint.
+**API token storage** — The Vercel API token is stored in a `config.vercelDeploy` Sanity document, readable by all authenticated studio users. Note that a **Full Account** scoped token can read and write your entire Vercel account, so anyone with studio access can read a credential that grants broad Vercel access — treat the token accordingly. Audit who has access to your Sanity project at sanity.io → Project → Members. If your studio includes untrusted editors, consider a server-side proxy that holds the token and exposes only a scoped deploy endpoint.
 
 **Deploy hook URL validation** — `triggerDeploy` validates that the hook URL matches `api.vercel.com/v1/integrations/deploy/` before making the request, preventing SSRF from a tampered document.
 
@@ -180,11 +202,15 @@ If "No stderr or stdout was captured" appears, the build may have failed before 
 - React 18 or 19
 - A Vercel account with at least one project and a deploy hook configured
 
+Zero runtime dependencies — `react` and `sanity` are peer dependencies provided by your Studio; the plugin ships nothing else.
+
 ---
 
 ## Contributing
 
 Issues and pull requests welcome at [github.com/Liiift-Studio/Deploy-Vercel-from-Sanity](https://github.com/Liiift-Studio/Deploy-Vercel-from-Sanity).
+
+Local development, `npm link`, and publishing steps are documented in [SETUP.md](./SETUP.md).
 
 ---
 

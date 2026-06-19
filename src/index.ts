@@ -13,7 +13,7 @@ export type { VercelDeployPluginConfig, DeployTarget, VercelDeployment, VercelDe
  *
  * @example
  * // sanity.config.ts
- * import { vercelDeploy } from 'deploy-vercel-from-sanity'
+ * import { vercelDeploy } from '@liiift-studio/deploy-vercel-from-sanity'
  *
  * export default defineConfig({
  *   plugins: [
