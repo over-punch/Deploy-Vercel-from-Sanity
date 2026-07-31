@@ -17,6 +17,8 @@ import type { DeployTarget, VercelDeployment } from '../types'
 
 const POLL_INTERVAL_MS = 5_000
 const LABEL_WIDTH      = 64
+/** Max time (ms) to hold the optimistic pending state before giving up and deferring to real API status */
+const PENDING_TIMEOUT_MS = 60_000
 
 interface DeployItemProps {
 	target: DeployTarget
@@ -31,7 +33,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 
 	const [deployments, setDeployments]      = useState<VercelDeployment[]>([])
 	const [loadingInitial, setLoadingInitial] = useState(true)
-	const [triggering, setTriggering]        = useState(false)
+	const [pendingSince, setPendingSince]    = useState<number | null>(null)
 	const [canceling, setCanceling]          = useState(false)
 	const [deployError, setDeployError]      = useState<string | null>(null)
 	const [showHistory, setShowHistory]      = useState(false)
@@ -43,8 +45,13 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const [loadingLogs, setLoadingLogs]      = useState(false)
 	const [logError, setLogError]            = useState<string | null>(null)
 
-	const latest   = deployments[0]
-	const isActive = triggering || isActiveState(latest?.state)
+	/** uid of the deployment that was latest when Deploy was clicked — lets us tell the optimistic state apart from a genuinely new deployment */
+	const triggeredFromUidRef = useRef<string | undefined>(undefined)
+
+	const latest = deployments[0]
+	/** True between the click and the API returning a new deployment — drives the optimistic "Queued" state */
+	const isPending = pendingSince !== null
+	const isActive  = isPending || isActiveState(latest?.state)
 
 	// ── Fetch deployments ──────────────────────────────────────────────────────
 	const fetchDeployments = useCallback(async () => {
@@ -67,9 +74,20 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		return () => clearInterval(id)
 	}, [isActive, fetchDeployments])
 
+	// Hand off from the optimistic state only once the API returns a deployment
+	// that is not the one which was already latest when Deploy was clicked.
 	useEffect(() => {
-		if (triggering && latest && latest.state !== undefined) setTriggering(false)
-	}, [triggering, latest])
+		if (!isPending) return
+		if (latest?.uid && latest.uid !== triggeredFromUidRef.current) setPendingSince(null)
+	}, [isPending, latest?.uid])
+
+	// Safety net — never strand the card in the optimistic state if the new
+	// deployment never appears (hook accepted but nothing was queued).
+	useEffect(() => {
+		if (!isPending) return
+		const id = setTimeout(() => setPendingSince(null), PENDING_TIMEOUT_MS)
+		return () => clearTimeout(id)
+	}, [isPending])
 
 	//── Deploy-complete toast ─────────────────────────────────────────────────
 	const prevStateRef = useRef<string | undefined>(undefined)
@@ -98,7 +116,8 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 	useEffect(() => {
 		if (isActive) {
-			const start = latest?.created ?? Date.now()
+			// While optimistic, count from the click; once real, count from the deployment's own timestamp
+			const start = pendingSince ?? latest?.created ?? Date.now()
 			setElapsed(Math.floor((Date.now() - start) / 1000))
 			timerRef.current = setInterval(() => {
 				setElapsed(Math.floor((Date.now() - start) / 1000))
@@ -108,24 +127,27 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 			if (timerRef.current) clearInterval(timerRef.current)
 		}
 		return () => { if (timerRef.current) clearInterval(timerRef.current) }
-	}, [isActive, latest?.created])
+	}, [isActive, pendingSince, latest?.created])
 
 	// ── Actions ───────────────────────────────────────────────────────────────
 	const deploy = useCallback(() => {
+		// Paint the optimistic "Queued" state in the same frame as the click,
+		// before the hook request is even sent
 		flushSync(() => {
 			setDeployError(null)
-			setTriggering(true)
+			triggeredFromUidRef.current = latest?.uid
+			setPendingSince(Date.now())
 		})
 		void (async () => {
 			try {
 				await triggerDeploy(target.url)
 				setTimeout(fetchDeployments, 2000)
 			} catch (err) {
-				setTriggering(false)
+				setPendingSince(null)
 				setDeployError(err instanceof Error ? err.message : 'Deploy failed')
 			}
 		})()
-	}, [target.url, fetchDeployments])
+	}, [target.url, fetchDeployments, latest?.uid])
 
 	const cancel = useCallback(async () => {
 		if (!latest?.uid) return
@@ -218,8 +240,8 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 									)}
 									{token && !loadingInitial && (
 										<>
-											{triggering ? (
-												<Badge tone="caution" padding={2}>Triggering…</Badge>
+											{isPending ? (
+												<StatusBadge state="QUEUED" />
 											) : (
 												<StatusBadge state={latest?.state} />
 											)}
@@ -234,12 +256,15 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 													style={{ cursor: 'pointer' }}
 												/>
 											)}
-											{isActive && elapsed > 0 ? (
+											{isPending ? (
+												/* Optimistic — dimmed spinner only; no elapsed time until a real build exists */
+												<Spinner muted style={{ marginLeft: 4, opacity: 0.5 }} />
+											) : isActive ? (
 												<Flex align="center" gap={1}>
 													<Spinner muted style={{ marginLeft: 4 }} />
 													<Text size={1} muted>{formatDuration(elapsed)}</Text>
 												</Flex>
-											) : (!isActive && deployedAt) ? (
+											) : deployedAt ? (
 												<Text size={1} muted>{deployedAt}</Text>
 											) : null}
 										</>
@@ -562,6 +587,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 						<Button
 							text="Deploy"
 							tone="primary"
+							loading={isPending}
 							disabled={isActive}
 							onClick={deploy}
 							style={{
