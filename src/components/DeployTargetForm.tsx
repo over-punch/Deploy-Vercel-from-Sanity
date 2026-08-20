@@ -2,9 +2,10 @@
 import { useState, useCallback } from 'react'
 import { useClient } from 'sanity'
 import {
-	Dialog, Box, Stack, Flex, Text, TextInput, Button, Switch, Label, Card,
+	Dialog, Box, Flex, Text, TextInput, Button, Switch, Label, Card,
 } from '@sanity/ui'
-import { CheckmarkCircleIcon } from '@sanity/icons'
+import { Stack } from '../ui'
+import { CheckmarkCircleIcon } from '../icons'
 import type { DeployTarget } from '../types'
 
 const VERCEL_HOOK_RE = /^https:\/\/api\.vercel\.com\/v1\/integrations\/deploy\//
@@ -34,10 +35,10 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 		if (!canSave) return
 		setSaving(true)
 		setError(null)
-		const fields = {
+		const fields: { name: string; url: string; teamId: string | null; disableDeleteAction: boolean } = {
 			name:                name.trim(),
 			url:                 url.trim(),
-			...(teamId.trim()  ? { teamId: teamId.trim() } : { teamId: null }),
+			teamId:              teamId.trim() || null,
 			disableDeleteAction: disableDelete,
 		}
 		try {
@@ -127,7 +128,7 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 							id="disable-delete"
 						/>
 						<Stack space={1}>
-							<Label size={1} htmlFor="disable-delete">Disable delete action</Label>
+							<Label as="label" size={1} htmlFor="disable-delete">Disable delete action</Label>
 							<Text size={0} muted>Hides the delete button for this target in the studio.</Text>
 						</Stack>
 					</Flex>

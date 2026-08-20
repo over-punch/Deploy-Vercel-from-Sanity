@@ -1,8 +1,11 @@
 // Vercel API token form — rendered inside a Dialog by DeployTool
 import { useState, useCallback } from 'react'
 import { useClient } from 'sanity'
-import { Stack, Text, TextInput, Button, Card, Dialog, Flex } from '@sanity/ui'
-import { CheckmarkCircleIcon } from '@sanity/icons'
+import {
+	Text, TextInput, Button, Card, Dialog, Flex,
+} from '@sanity/ui'
+import { Stack } from '../ui'
+import { CheckmarkCircleIcon } from '../icons'
 
 interface TokenSetupProps {
 	/** Called after the token is successfully saved */

@@ -3,7 +3,7 @@
 **Trigger and monitor Vercel deployments directly from [Sanity Studio](https://www.sanity.io) — no context switching required.**
 
 [![npm version](https://img.shields.io/npm/v/@liiift-studio/deploy-vercel-from-sanity)](https://www.npmjs.com/package/@liiift-studio/deploy-vercel-from-sanity)
-[![Sanity v3/v4/v5](https://img.shields.io/badge/sanity-v3%20%7C%20v4%20%7C%20v5-f03e2f)](https://www.sanity.io)
+[![Sanity v3–v6](https://img.shields.io/badge/sanity-v3%20%E2%80%93%20v6-f03e2f)](https://www.sanity.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 ![The Deploy tool inside Sanity Studio — Production and Preview targets each showing a live status badge, branch, commit SHA, deploy author, and a one-click Deploy button](https://raw.githubusercontent.com/Liiift-Studio/Deploy-Vercel-from-Sanity/main/docs/screenshot.png?v=1)
@@ -198,11 +198,23 @@ If "No stderr or stdout was captured" appears, the build may have failed before 
 
 ## Requirements
 
-- Sanity Studio v3, v4, or v5
+- Sanity Studio v3, v4, v5, or v6
 - React 18 or 19
 - A Vercel account with at least one project and a deploy hook configured
 
-Zero runtime dependencies — `react` and `sanity` are peer dependencies provided by your Studio; the plugin ships nothing else.
+Zero runtime dependencies — `react`, `sanity`, `@sanity/ui` and `@sanity/icons` are peer dependencies provided by your Studio; the plugin ships nothing else.
+
+### Studio compatibility
+
+A single build supports the whole range. `@sanity/icons` v5 and `@sanity/ui` v4
+both moved components out of their barrel files, so the plugin resolves them at
+runtime rather than importing names that only exist on one major:
+
+| Studio | `@sanity/icons` | `@sanity/ui` | Notes |
+| --- | --- | --- | --- |
+| v3 – v6.3 | 3.x | 2.x / 3.x | Fully Studio-native |
+| v6.4 – v6.9 | 5.x | 3.x | Icons resolved via `<Icon symbol>` |
+| v6.10+ | 5.x | 4.x | Tooltips, overflow menu, log blocks and toasts use built-in fallbacks, since `@sanity/ui` v4 serves those from subpaths that do not exist on earlier majors |
 
 ---
 

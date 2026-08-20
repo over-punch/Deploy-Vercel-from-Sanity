@@ -1,9 +1,10 @@
 // Deployment history modal — shows last 10 deployments for a target
 import { useEffect, useState, useCallback } from 'react'
 import {
-	Dialog, Card, Box, Stack, Flex, Text, Badge, Spinner, Button,
+	Dialog, Card, Box, Flex, Text, Badge, Spinner, Button,
 } from '@sanity/ui'
-import { LaunchIcon, CloseIcon } from '@sanity/icons'
+import { Stack } from '../ui'
+import { LaunchIcon, CloseIcon } from '../icons'
 import { listDeployments } from '../lib/api'
 import { parseHookUrl, stateLabel, timeAgo, shortSha, safeHref } from '../lib/helpers'
 import type { DeployTarget, VercelDeployment } from '../types'

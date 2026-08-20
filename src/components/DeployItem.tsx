@@ -2,13 +2,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import {
-	Card, Box, Stack, Flex, Text, Button, Tooltip, Badge, Spinner,
-	MenuButton, Menu, MenuItem, Code, useToast,
+	Card, Box, Flex, Text, Button, Badge, Spinner,
 } from '@sanity/ui'
+import { Stack, useToast, Tooltip, ActionMenu, Code } from '../ui'
 import {
 	ClockIcon, TrashIcon, EllipsisVerticalIcon, LaunchIcon,
 	CopyIcon, CheckmarkIcon, WarningOutlineIcon, ChevronDownIcon, ChevronUpIcon, EditIcon, SchemaIcon
-} from '@sanity/icons'
+} from '../icons'
 import { listDeployments, cancelDeployment, triggerDeploy, getDeploymentEvents } from '../lib/api'
 import { parseHookUrl, isActiveState, formatDuration, timeAgo, shortSha, safeHref, projectHref, githubCommitHref } from '../lib/helpers'
 import { StatusBadge } from './StatusBadge'
@@ -270,52 +270,22 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 										</>
 									)}
 								</Flex>
-								<MenuButton
-									button={<Button mode="ghost" icon={EllipsisVerticalIcon} padding={2} />}
+								<ActionMenu
 									id={`menu-${target._id}`}
-									menu={
-										<Menu>
-											<MenuItem
-												text="Edit target"
-												icon={EditIcon}
-												onClick={() => onEdit(target)}
-											/>
-											<MenuItem
-												text="History"
-												icon={ClockIcon}
-												onClick={() => setShowHistory(true)}
-											/>
-											{safeHref(latest?.inspectorUrl) && (
-												<MenuItem
-													text="Build logs"
-													icon={LaunchIcon}
-													as="a"
-													href={safeHref(latest?.inspectorUrl)}
-													target="_blank"
-													rel="noreferrer"
-												/>
-											)}
-											{vercelProjectUrl && (
-												<MenuItem
-													text="Open in Vercel"
-													icon={LaunchIcon}
-													as="a"
-													href={vercelProjectUrl}
-													target="_blank"
-													rel="noreferrer"
-												/>
-											)}
-											{!target.disableDeleteAction && (
-												<MenuItem
-													text="Delete"
-													icon={TrashIcon}
-													tone="critical"
-													onClick={() => onDelete(target)}
-												/>
-											)}
-										</Menu>
-									}
-									popover={{ placement: 'bottom-end' }}
+									buttonIcon={EllipsisVerticalIcon}
+									items={[
+										{ text: 'Edit target', icon: EditIcon, onClick: () => onEdit(target) },
+										{ text: 'History', icon: ClockIcon, onClick: () => setShowHistory(true) },
+										...(safeHref(latest?.inspectorUrl)
+											? [{ text: 'Build logs', icon: LaunchIcon, href: safeHref(latest?.inspectorUrl)! }]
+											: []),
+										...(vercelProjectUrl
+											? [{ text: 'Open in Vercel', icon: LaunchIcon, href: vercelProjectUrl }]
+											: []),
+										...(!target.disableDeleteAction
+											? [{ text: 'Delete', icon: TrashIcon, tone: 'critical' as const, onClick: () => onDelete(target) }]
+											: []),
+									]}
 								/>
 							</Flex>
 
@@ -354,14 +324,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 
 										{/* Commit SHA — links to GitHub if repo info available, tooltip shows full message */}
 										{sha && (
-											<Tooltip
-												content={
-													<Box padding={2}>
-														<Text size={1}>{commitMsg ?? sha}</Text>
-													</Box>
-												}
-												portal
-											>
+											<Tooltip text={commitMsg ?? sha}>
 												{commitHref ? (
 													<a
 														href={commitHref}
@@ -392,14 +355,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 										{/* Visit link + copy URL */}
 										{latest?.url && latest.state === 'READY' && (
 											<>
-												<Tooltip
-													content={
-														<Box padding={2}>
-															<Text size={1}>{copied ? 'Copied!' : 'Copy URL'}</Text>
-														</Box>
-													}
-													portal
-												>
+												<Tooltip text={copied ? 'Copied!' : 'Copy URL'}>
 													<Button
 														mode="ghost"
 														icon={copied ? CheckmarkIcon : CopyIcon}
@@ -463,7 +419,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 															<Stack space={2}>
 																<Box style={{ maxHeight: 240, overflowY: 'auto', fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6 }}>
 																	{errorLines.map((line, i) => (
-																		<Code key={i} size={1} style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+																		<Code key={i} style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
 																			{line}
 																		</Code>
 																	))}

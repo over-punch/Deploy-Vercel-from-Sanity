@@ -1,6 +1,6 @@
 // Sanity schema for vercel_deploy documents — stores deploy hook targets
 import { defineField, defineType } from 'sanity'
-import { RocketIcon } from '@sanity/icons'
+import { RocketIcon } from '../icons'
 
 export const vercelDeploySchema = defineType({
 	name: 'vercel_deploy',

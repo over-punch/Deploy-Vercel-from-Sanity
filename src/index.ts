@@ -1,6 +1,6 @@
 // deploy-vercel-from-sanity — Sanity Studio v5 plugin for Vercel deployments
 import { definePlugin } from 'sanity'
-import { RocketIcon } from '@sanity/icons'
+import { RocketIcon } from './icons'
 import { DeployTool } from './components/DeployTool'
 import { vercelDeploySchema } from './schema/vercelDeploy'
 import type { VercelDeployPluginConfig } from './types'

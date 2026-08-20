@@ -2,9 +2,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useClient } from 'sanity'
 import {
-	Card, Box, Stack, Flex, Text, Heading, Spinner, Button, Dialog, useToast,
+	Card, Box, Flex, Text, Heading, Spinner, Button, Dialog,
 } from '@sanity/ui'
-import { TokenIcon, TrashIcon, WarningOutlineIcon, AddIcon } from '@sanity/icons'
+import { Stack, useToast, ToastViewport } from '../ui'
+import { TokenIcon, TrashIcon, WarningOutlineIcon, AddIcon } from '../icons'
 import { DeployItem } from './DeployItem'
 import { TokenSetup } from './TokenSetup'
 import { DeployTargetForm } from './DeployTargetForm'
@@ -287,6 +288,9 @@ export function DeployTool() {
 					</Box>
 				</Dialog>
 			)}
+
+			{/* Fallback toast surface — renders nothing when @sanity/ui exports its own useToast */}
+			<ToastViewport />
 		</Card>
 	)
 }
