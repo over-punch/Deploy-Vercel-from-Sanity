@@ -2,11 +2,18 @@
 import { definePlugin } from 'sanity'
 import { RocketIcon } from './icons'
 import { DeployTool } from './components/DeployTool'
+import { ConfigProvider, resolveConfig } from './config'
 import { vercelDeploySchema } from './schema/vercelDeploy'
 import type { VercelDeployPluginConfig } from './types'
 
 export { vercelDeploySchema } from './schema/vercelDeploy'
-export type { VercelDeployPluginConfig, DeployTarget, VercelDeployment, VercelDeployState } from './types'
+export type {
+	VercelDeployPluginConfig,
+	VercelDeployMode,
+	DeployTarget,
+	VercelDeployment,
+	VercelDeployState,
+} from './types'
 
 /**
  * Sanity Studio plugin — trigger and monitor Vercel deployments.
@@ -28,6 +35,7 @@ export type { VercelDeployPluginConfig, DeployTarget, VercelDeployment, VercelDe
  */
 export const vercelDeploy = definePlugin<VercelDeployPluginConfig | void>(options => {
 	const config = options ?? {}
+	const resolved = resolveConfig(options)
 	return {
 		name: 'deploy-vercel-from-sanity',
 		schema: {
@@ -38,7 +46,12 @@ export const vercelDeploy = definePlugin<VercelDeployPluginConfig | void>(option
 				name: config.name ?? 'vercel-deploy',
 				title: config.title ?? 'Deploy',
 				icon: config.icon ?? RocketIcon,
-				component: DeployTool,
+				// Wrapped so the tool tree can read the resolved config without prop drilling.
+				component: () => (
+					<ConfigProvider value={resolved}>
+						<DeployTool />
+					</ConfigProvider>
+				),
 			},
 		],
 	}

@@ -6,7 +6,10 @@ import {
 	ClockIcon, TrashIcon, EllipsisVerticalIcon, LaunchIcon,
 	CopyIcon, CheckmarkIcon, WarningOutlineIcon, ChevronDownIcon, ChevronUpIcon, EditIcon,
 } from '../icons'
-import { listDeployments, cancelDeployment, triggerDeploy, getDeploymentEvents } from '../lib/api'
+import { triggerDeploy } from '../lib/api'
+import { fetchDeployments as transportFetch, cancelDeploy, fetchDeploymentEvents } from '../lib/transport'
+import { usePluginConfig } from '../config'
+import { useClient } from 'sanity'
 import { parseHookUrl, isActiveState, formatDuration, timeAgo, shortSha, safeHref, projectHref, githubCommitHref, deploymentHref } from '../lib/helpers'
 import { StatusBadge } from './StatusBadge'
 import { DeployHistory } from './DeployHistory'
@@ -27,6 +30,14 @@ interface DeployItemProps {
 export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps) {
 	const { projectId, hookId } = parseHookUrl(target.url)
 	const toast = useToast()
+	const pluginConfig = usePluginConfig()
+	const client = useClient({ apiVersion: '2025-01-01' })
+
+	/** Where status, cancel and log requests go — direct to Vercel, or via the proxy. */
+	const transport = pluginConfig.mode === 'proxy'
+		? { mode: 'proxy' as const, proxyUrl: pluginConfig.proxyUrl ?? '', statusKey: pluginConfig.statusKey }
+		: { mode: 'direct' as const, token }
+	const targetRef = { projectId, hookId, proxyKey: target.proxyKey, teamId: target.teamId }
 
 	const [deployments, setDeployments]      = useState<VercelDeployment[]>([])
 	const [loadingInitial, setLoadingInitial] = useState(true)
@@ -68,7 +79,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		if (!projectId || !hookId || !token) return
 		const seq = ++requestSeqRef.current
 		try {
-			const data = await listDeployments({ projectId, hookId, token, teamId: target.teamId })
+			const data = await transportFetch(transport, targetRef)
 			// Drop the response if a newer request has since been issued, or the card unmounted.
 			if (seq !== requestSeqRef.current || !mountedRef.current) return
 			setDeployments(data)
@@ -158,20 +169,34 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		})
 		void (async () => {
 			try {
-				await triggerDeploy(target.url)
+				if (pluginConfig.mode === 'proxy') {
+					// The Studio holds no deploy credential. Creating this document is the
+					// request; Sanity's write ACL is what authorises it, and a signed webhook
+					// hands it to the proxy, which owns the hook URL. A viewer cannot write,
+					// so a viewer cannot deploy.
+					if (!target.proxyKey) throw new Error('Target has no proxy key — set one on the deploy target')
+					await client.create({
+						_type: 'vercelDeploy.request',
+						target: { _type: 'reference', _ref: target._id },
+						proxyKey: target.proxyKey,
+						requestedAt: new Date().toISOString(),
+					})
+				} else {
+					await triggerDeploy(target.url ?? '')
+				}
 				setTimeout(fetchDeployments, 2000)
 			} catch (err) {
 				setPendingSince(null)
 				setDeployError(err instanceof Error ? err.message : 'Deploy failed')
 			}
 		})()
-	}, [target.url, fetchDeployments, latest?.uid])
+	}, [target.url, target.proxyKey, target._id, pluginConfig.mode, client, fetchDeployments, latest?.uid])
 
 	const cancel = useCallback(async () => {
 		if (!latest?.uid) return
 		setCanceling(true)
 		try {
-			await cancelDeployment({ deploymentId: latest.uid, token, teamId: target.teamId })
+			await cancelDeploy(transport, targetRef, latest.uid)
 			await fetchDeployments()
 		} catch (err) {
 			console.error('deploy-vercel-from-sanity: cancel error', err)
@@ -197,11 +222,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		setLoadingLogs(true)
 		setLogError(null)
 		try {
-			const events = await getDeploymentEvents({
-				deploymentId: latest.uid,
-				token,
-				teamId: target.teamId,
-			})
+			const events = await fetchDeploymentEvents(transport, targetRef, latest.uid)
 			const lines = events
 				.filter(e => e.type === 'stderr' || e.type === 'stdout')
 				.map(e => e.text ?? '')

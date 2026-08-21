@@ -1,7 +1,8 @@
 // Deployment history modal — shows last 10 deployments for a target
 import { useId, useEffect, useState, useCallback } from 'react'
 import { LaunchIcon, CloseIcon } from '../icons'
-import { listDeployments } from '../lib/api'
+import { fetchDeployments as transportFetch } from '../lib/transport'
+import { usePluginConfig } from '../config'
 import { parseHookUrl, stateLabel, timeAgo, shortSha, safeHref, deploymentHref } from '../lib/helpers'
 import type { DeployTarget, VercelDeployment } from '../types'
 import { Badge, Box, Button, Card, Dialog, Flex, Spinner, Stack, Text } from '../compat'
@@ -14,17 +15,23 @@ interface DeployHistoryProps {
 
 export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 	const dialogId = useId()
+	const pluginConfig = usePluginConfig()
 	const [deployments, setDeployments] = useState<VercelDeployment[]>([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
 
 	const { projectId, hookId } = parseHookUrl(target.url)
+	/** Where deployment reads go — direct to Vercel, or via the proxy. */
+	const transport = pluginConfig.mode === 'proxy'
+		? { mode: 'proxy' as const, proxyUrl: pluginConfig.proxyUrl ?? '', statusKey: pluginConfig.statusKey }
+		: { mode: 'direct' as const, token }
+	const targetRef = { projectId, hookId, proxyKey: target.proxyKey, teamId: target.teamId }
 
 	const load = useCallback(async () => {
 		setLoading(true)
 		setError(null)
 		try {
-			const data = await listDeployments({ projectId, hookId, token, teamId: target.teamId, limit: 10 })
+			const data = await transportFetch(transport, targetRef, 20)
 			setDeployments(data)
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Failed to load history')

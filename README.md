@@ -101,9 +101,41 @@ EOF
 
 ---
 
+## Two modes
+
+| | `direct` (default) | `proxy` |
+| --- | --- | --- |
+| Setup | Paste a token | Deploy one route, 4 env vars, one webhook (~15 min) |
+| Vercel token | In the dataset | On your server |
+| Deploy hook URLs | In the dataset | On your server |
+| Who can deploy | Anyone who can **read** the dataset | Anyone who can **write** — viewers cannot |
+| In the browser | Full Account token | A status key that only reads deployment status |
+
+Direct mode is the default and needs no infrastructure. Use it when everyone with
+Studio access is already trusted with Vercel access.
+
+Reach for proxy mode when that is not true — untrusted editors, a public dataset,
+or a token you cannot afford to have read. Note that the hook URL matters as much
+as the token: it is itself a deploy credential, so in direct mode the section
+below is a UI convenience, not a security control.
+
+```ts
+vercelDeploy({
+  mode: 'proxy',
+  proxyUrl: 'https://your-site.com/api/vercel-deploy',
+  statusKey: process.env.SANITY_STUDIO_DEPLOY_STATUS_KEY,
+})
+```
+
+Setup guide: [`proxy/README.md`](./proxy/README.md).
+
+---
+
 ## Restrict access to editors and above
 
 By default the Deploy tab is visible to all authenticated users. To hide it from viewers:
+
+> This hides the tab. In `direct` mode it does not prevent deploying — the hook URL is in the dataset, and anyone who can read it can trigger a build without the Studio. Use `proxy` mode if you need that actually enforced.
 
 > Filter on the tool name you actually configured. The snippet below uses the default `vercel-deploy`; if you passed a custom `name`, match that instead or the filter silently does nothing.
 

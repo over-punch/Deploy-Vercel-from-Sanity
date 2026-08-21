@@ -1,6 +1,7 @@
 // Main deploy tool — fetches targets + token, renders per-project cards
 import { useState, useEffect, useCallback } from 'react'
 import { useClient } from 'sanity'
+import { usePluginConfig } from '../config'
 import { TokenIcon, TrashIcon, WarningOutlineIcon, AddIcon } from '../icons'
 import { DeployItem } from './DeployItem'
 import { TokenSetup } from './TokenSetup'
@@ -17,6 +18,9 @@ const TARGETS_QUERY = `*[_type == "vercel_deploy" && !(_id in path("drafts.**"))
 
 export function DeployTool() {
 	const client = useClient({ apiVersion: '2025-01-01' })
+	const pluginConfig = usePluginConfig()
+	// In proxy mode the Studio never holds a Vercel token — the proxy owns it.
+	const usesToken = pluginConfig.mode === 'direct'
 	const toast  = useToast()
 
 	const [token, setToken]                   = useState<string | null>(null)
@@ -140,15 +144,17 @@ export function DeployTool() {
 					<Flex align="center" justify="space-between" className="dvfs-header">
 						<Heading size={2}>Deploy with Vercel</Heading>
 						<Flex align="center" gap={3} className="dvfs-header-actions">
-							<Button
-								text={token ? 'Token connected' : 'Connect API token'}
-								mode="ghost"
-								icon={TokenIcon}
-								fontSize={1}
-								tone={token ? 'positive' : 'caution'}
-								onClick={() => setShowTokenSetup(true)}
-								style={{ cursor: 'pointer' }}
-							/>
+							{usesToken && (
+								<Button
+									text={token ? 'Token connected' : 'Connect API token'}
+									mode="ghost"
+									icon={TokenIcon}
+									fontSize={1}
+									tone={token ? 'positive' : 'caution'}
+									onClick={() => setShowTokenSetup(true)}
+									style={{ cursor: 'pointer' }}
+								/>
+							)}
 							<Button
 								text="Add target"
 								mode="ghost"
@@ -161,7 +167,7 @@ export function DeployTool() {
 					</Flex>
 
 					{/* ── No-token upgrade banner ──────────────────────────────── */}
-					{!token && (
+					{usesToken && !token && (
 						<Card padding={4} radius={2} tone="caution" shadow={1}>
 							<Flex align="center" justify="space-between" gap={4}>
 								<Stack space={2}>

@@ -1,6 +1,7 @@
 // Dialog form for creating and editing vercel_deploy documents
 import { useId, useState, useCallback } from 'react'
 import { useClient } from 'sanity'
+import { usePluginConfig } from '../config'
 import { CheckmarkCircleIcon } from '../icons'
 import type { DeployTarget } from '../types'
 import { Box, Button, Card, Dialog, Flex, Label, Stack, Switch, Text, TextInput } from '../compat'
@@ -20,6 +21,8 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 
 	// Ids for label/description association. useId keeps them unique inside a published
 	// plugin, where a hardcoded id can collide with anything the host Studio renders.
+	const pluginConfig = usePluginConfig()
+	const proxyKeyId  = useId()
 	const dialogId    = useId()
 	const nameId      = useId()
 	const urlId       = useId()
@@ -32,21 +35,24 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 	const [name, setName]                       = useState(initial?.name ?? '')
 	const [url, setUrl]                         = useState(initial?.url ?? '')
 	const [teamId, setTeamId]                   = useState(initial?.teamId ?? '')
+	const [proxyKey, setProxyKey] = useState(initial?.proxyKey ?? '')
 	const [disableDelete, setDisableDelete]     = useState(initial?.disableDeleteAction ?? false)
 	const [saving, setSaving]                   = useState(false)
 	const [error, setError]                     = useState<string | null>(null)
 
 	const urlValid = !url || VERCEL_HOOK_RE.test(url.trim())
-	const canSave  = name.trim() && url.trim() && urlValid
+	const isProxy  = pluginConfig.mode === 'proxy'
+	const canSave  = Boolean(name.trim()) && urlValid && (isProxy ? Boolean(proxyKey.trim()) : Boolean(url.trim()))
 
 	const save = useCallback(async () => {
 		if (!canSave) return
 		setSaving(true)
 		setError(null)
-		const fields: { name: string; url: string; teamId: string | null; disableDeleteAction: boolean } = {
+		const fields: { name: string; url: string; teamId: string | null; proxyKey: string | null; disableDeleteAction: boolean } = {
 			name:                name.trim(),
 			url:                 url.trim(),
 			teamId:              teamId.trim() || null,
+			proxyKey:            proxyKey.trim() || null,
 			disableDeleteAction: disableDelete,
 		}
 		try {
@@ -61,7 +67,7 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 		} finally {
 			setSaving(false)
 		}
-	}, [canSave, isEdit, initial, client, name, url, teamId, disableDelete, onSaved])
+	}, [canSave, isEdit, initial, client, name, url, teamId, proxyKey, disableDelete, onSaved])
 
 	return (
 		<Dialog
@@ -103,7 +109,26 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 						/>
 					</Stack>
 
-					{/* Deploy hook URL */}
+					{/* Deploy hook URL — direct mode only. In proxy mode the hook URL lives on
+					    the proxy, so that reading this dataset does not hand anyone a deploy. */}
+					{isProxy ? (
+						<Stack space={2}>
+							<Label as="label" size={1} htmlFor={proxyKeyId}>
+								Proxy Key <span aria-hidden="true">*</span>
+							</Label>
+							<TextInput
+								id={proxyKeyId}
+								required
+								aria-required="true"
+								value={proxyKey}
+								onChange={e => setProxyKey((e.target as HTMLInputElement).value)}
+								placeholder="production"
+							/>
+							<Text size={0} muted>
+								Matches a key configured on your deploy proxy, which holds the real hook URL. Contains no secret.
+							</Text>
+						</Stack>
+					) : (
 					<Stack space={2}>
 						<Label as="label" size={1} htmlFor={urlId}>
 							Deploy hook URL <span aria-hidden="true">*</span>
@@ -129,6 +154,7 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 							Vercel dashboard → Project → Settings → Git → Deploy Hooks
 						</Text>
 					</Stack>
+					)}
 
 					{/* Team ID */}
 					<Stack space={2}>

@@ -2,6 +2,36 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.3.0
+
+Adds an optional deploy proxy for setups where the dataset is not a safe place for
+credentials. **Direct mode is unchanged and remains the default** — existing
+installs need no changes.
+
+### Added
+
+- **`mode: 'proxy'`.** The Studio holds no Vercel credentials. Deploys are
+  requested by creating a `vercelDeploy.request` document, which Sanity's own
+  write ACL already restricts to roles that can write — so viewers cannot deploy —
+  and a signed Sanity webhook hands the request to a server-side proxy that owns
+  the token and the hook URLs.
+- **`proxy/`** ships with the package: a framework-agnostic `core.ts`, a drop-in
+  Next.js App Router route, an annotated `.env.example`, and a setup guide.
+  Roughly 15 minutes to stand up.
+- **`proxyKey`** on deploy targets. In proxy mode the target form asks for this
+  instead of a hook URL, because a hook URL *is* a deploy credential — leaving one
+  in the dataset lets any reader trigger a build regardless of role.
+- Optional `VERCEL_DEPLOY_ALLOWED_ROLES` on the proxy, checked against
+  `_createdBy`, which Sanity stamps and the client cannot forge.
+
+### Changed
+
+- The deploy hook URL is no longer unconditionally required on a target; a target
+  needs either a hook URL or a proxy key, enforced by cross-field validation.
+- Token controls are hidden in proxy mode, where they have nothing to do.
+- The README documents that restricting the tool to editors is a UI convenience in
+  direct mode, not a security control.
+
 ## 1.2.1
 
 Fixes for defects the 1.2.0 changes themselves introduced, found by a re-check

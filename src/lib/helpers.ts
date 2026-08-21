@@ -5,7 +5,8 @@ import type { VercelDeployment, VercelDeployState } from '../types'
  * Extracts projectId and hookId from a Vercel deploy hook URL.
  * Format: https://api.vercel.com/v1/integrations/deploy/{projectId}/{hookId}
  */
-export function parseHookUrl(url: string): { projectId: string; hookId: string } {
+export function parseHookUrl(url: string | undefined): { projectId: string; hookId: string } {
+	if (!url) return { projectId: '', hookId: '' }
 	try {
 		const path = new URL(url).pathname
 		const parts = path.split('/').filter(Boolean)
