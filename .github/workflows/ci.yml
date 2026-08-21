@@ -64,13 +64,16 @@ jobs:
       - name: Install this leg's Sanity versions
         # --no-save keeps package.json untouched; --legacy-peer-deps because the
         # older legs pair React 18 with packages whose peers name React 19.
+        # styled-components is a peer of @sanity/ui — without it the barrel cannot
+        # even be imported, so the compat module fails to load.
         run: |
           npm install --no-save --legacy-peer-deps \
             sanity@${{ matrix.sanity }} \
             @sanity/ui@${{ matrix.ui }} \
             @sanity/icons@${{ matrix.icons }} \
             react@${{ matrix.react }} \
-            react-dom@${{ matrix.react }}
+            react-dom@${{ matrix.react }} \
+            styled-components@^6
 
       - name: Report what actually resolved
         run: |
