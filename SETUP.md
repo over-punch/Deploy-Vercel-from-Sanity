@@ -211,6 +211,7 @@ cd sites/positype/sanity && npm install @liiift-studio/deploy-vercel-from-sanity
       against **this package's** node_modules (ui 4 / icons 5), so linking alone
       does not exercise the v2/v3 paths.
 - [ ] Typecheck against the oldest and newest supported majors, not just the installed one
+- [ ] Run `npm test` — the suite covers the proxy's authorization boundary and the URL validators
 - [ ] Run `npm run build` and confirm no TypeScript errors
 - [ ] Bump version in `package.json` **and `src/version.ts`** — they are hand-synced
       and the value is rendered to users as a watermark in the tool

@@ -2,6 +2,36 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.3.1
+
+### Added
+
+- **Tests**, run by `npm test` and gating every publish via `prepublishOnly`
+  (typecheck → test → build). 42 of them, concentrated where the review found the
+  risk rather than spread for coverage:
+  - **Proxy authorization** — the status key fails closed when unset or empty,
+    gates cancel as well as reads, and a deployment is verified against the
+    target's project before its logs are read or it is cancelled. Includes an
+    adversarial case confirming a `deploymentId` cannot smuggle a `teamId` past
+    the proxy's own.
+  - **Deploy requests** — unknown and missing proxy keys are refused without a
+    call, case-insensitive key matching works as documented, a non-Vercel hook URL
+    is refused rather than fetched, and role gating denies without deploying.
+  - **URL validation** — `safeHref` rejects obfuscated `javascript:` variants;
+    `deploymentHref` rejects the host-substitution forms (`@evil.com`,
+    `user:pass@…`, embedded paths, ports and schemes) that plain concatenation
+    would have allowed.
+  - **Compat resolution** — a non-callable tombstone cannot be resolved as a hook,
+    which would read as present and then throw on first render.
+- Each security assertion was mutation-tested: removing the fail-closed key, the
+  project scope check, `encodeURIComponent`, `direction=backward`, or the hook
+  SSRF guard each makes the suite fail.
+
+### Changed
+
+- `prepublishOnly` now runs typecheck and tests before building. The 1.3.0 review
+  found defects that a passing build did not catch.
+
 ## 1.3.0
 
 Adds an optional deploy proxy for setups where the dataset is not a safe place for

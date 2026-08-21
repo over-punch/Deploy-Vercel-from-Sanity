@@ -366,6 +366,19 @@ See [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## Tests
+
+```bash
+npm test
+```
+
+Unit tests cover the proxy's authorization boundary (fail-closed status key,
+per-project deployment scoping, role gating, SSRF guard on hook URLs) and the URL
+validators that guard every anchor the plugin renders. `prepublishOnly` runs
+typecheck and tests before building, so a release cannot ship past them.
+
+---
+
 ## Contributing
 
 Issues and pull requests welcome at [github.com/Liiift-Studio/Deploy-Vercel-from-Sanity](https://github.com/Liiift-Studio/Deploy-Vercel-from-Sanity).
