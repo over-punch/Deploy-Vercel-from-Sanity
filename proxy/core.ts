@@ -16,13 +16,16 @@ export interface ProxyEnv {
 	/**
 	 * Map of proxy key to the project the hook belongs to, used for status lookups:
 	 * `{ production: { projectId: 'prj_…', hookId: '…', teamId: 'team_…' } }`.
-	 * Derivable from the hook URL — see `parseHookUrl` in the README.
+	 * projectId and hookId are the last two path segments of the deploy hook URL.
 	 */
 	projects: Record<string, { projectId: string; hookId: string; teamId?: string }>
 	/**
-	 * Key the Studio sends with status requests. Present in the Studio bundle and
-	 * therefore public; it gates only deployment-status reads for the keys above.
-	 * Omit to allow status reads without a key.
+	 * Key the Studio sends with status, log and cancel requests.
+	 *
+	 * Present in the Studio bundle and therefore public. It permits reading
+	 * deployment status and build logs for the configured targets, and cancelling
+	 * their in-progress deployments — cancel is a write, so this is not a read-only
+	 * key. Requests are scoped to the configured projects. Required.
 	 */
 	statusKey?: string
 	/**
@@ -98,7 +101,9 @@ async function userRoles(userId: string, env: ProxyEnv): Promise<string[]> {
  * @param env     Proxy environment.
  */
 export async function handleDeployRequest(payload: DeployRequestPayload, env: ProxyEnv): Promise<ProxyResult> {
-	const key = payload.proxyKey
+	// Lowercased to match envFromProcess, which lowercases the env-var side. Without
+	// this, a target typed as "Production" would 404 against a PRODUCTION env var.
+	const key = payload.proxyKey?.trim().toLowerCase()
 	if (!key) return { status: 400, body: { error: 'Request document has no proxyKey' } }
 
 	const hook = env.hooks[key]
@@ -119,10 +124,62 @@ export async function handleDeployRequest(payload: DeployRequestPayload, env: Pr
 	return { status: 200, body: { ok: true, key } }
 }
 
-/** Reject a status request whose key does not match, when one is configured. */
+/**
+ * Reject a request whose status key does not match.
+ *
+ * Fails closed: an unset key rejects everything rather than serving everyone. The
+ * previous behaviour left cancellation open to unauthenticated callers, since
+ * cancel is gated by this same check.
+ */
 function checkStatusKey(provided: string | null, env: ProxyEnv): ProxyResult | null {
-	if (!env.statusKey) return null
+	if (!env.statusKey) {
+		return { status: 500, body: { error: 'VERCEL_DEPLOY_STATUS_KEY is not configured' } }
+	}
 	return provided === env.statusKey ? null : { status: 401, body: { error: 'Invalid status key' } }
+}
+
+/**
+ * Confirm a deployment actually belongs to the project behind `key`.
+ *
+ * Without this, `deploymentId` is caller-supplied and the project lookup only
+ * supplies `teamId` — so a team-scoped token would let any holder of the (public)
+ * status key read build logs for, or cancel, any deployment in the whole team.
+ *
+ * @param deploymentId Deployment the caller is asking about.
+ * @param project      Project configured for the requested proxy key.
+ */
+async function assertDeploymentInProject(
+	deploymentId: string,
+	project: { projectId: string; teamId?: string },
+	env: ProxyEnv,
+): Promise<ProxyResult | null> {
+	const query = new URLSearchParams()
+	if (project.teamId) query.set('teamId', project.teamId)
+	const suffix = query.toString() ? `?${query}` : ''
+	let deployment: { projectId?: string }
+	try {
+		deployment = await vercel<{ projectId?: string }>(
+			`/v13/deployments/${encodeURIComponent(deploymentId)}${suffix}`,
+			env,
+		)
+	} catch (err) {
+		// Distinguish an unknown deployment from a broken token or a rate limit —
+		// collapsing all three into 404 makes a revoked token look like a UI bug.
+		const status = Number(String(err instanceof Error ? err.message : '').match(/\b(\d{3})\b/)?.[1])
+		if (status === 401 || status === 403) {
+			return { status: 502, body: { error: 'Vercel rejected the proxy token — check VERCEL_API_TOKEN' } }
+		}
+		if (status === 429) return { status: 429, body: { error: 'Vercel rate limit reached' } }
+		return { status: 404, body: { error: 'Deployment not found' } }
+	}
+	if (!deployment.projectId) {
+		// Loud rather than silently denying forever if the API shape ever changes.
+		return { status: 502, body: { error: 'Vercel returned no projectId; cannot verify deployment ownership' } }
+	}
+	if (deployment.projectId !== project.projectId) {
+		return { status: 403, body: { error: 'Deployment does not belong to this target' } }
+	}
+	return null
 }
 
 /** List recent deployments for a proxy key. */
@@ -132,7 +189,7 @@ export async function handleDeployments(
 ): Promise<ProxyResult> {
 	const denied = checkStatusKey(params.statusKey, env)
 	if (denied) return denied
-	const project = params.key ? env.projects[params.key] : undefined
+	const project = params.key ? env.projects[params.key.trim().toLowerCase()] : undefined
 	if (!project) return { status: 404, body: { error: 'Unknown target key' } }
 
 	const query = new URLSearchParams({
@@ -152,17 +209,27 @@ export async function handleEvents(
 ): Promise<ProxyResult> {
 	const denied = checkStatusKey(params.statusKey, env)
 	if (denied) return denied
-	const project = params.key ? env.projects[params.key] : undefined
+	const project = params.key ? env.projects[params.key.trim().toLowerCase()] : undefined
 	if (!project) return { status: 404, body: { error: 'Unknown target key' } }
 	if (!params.deploymentId) return { status: 400, body: { error: 'Missing deploymentId' } }
+	const wrongProject = await assertDeploymentInProject(params.deploymentId, project, env)
+	if (wrongProject) return wrongProject
 
-	const query = new URLSearchParams({ limit: '100' })
+	// direction=backward returns the *newest* events. Without it Vercel returns the
+	// first 100, so a failed build showed the top of its log and never the error.
+	const query = new URLSearchParams({ limit: '100', direction: 'backward' })
 	if (project.teamId) query.set('teamId', project.teamId)
-	const events = await vercel<unknown[]>(
+	const raw = await vercel<unknown>(
 		`/v2/deployments/${encodeURIComponent(params.deploymentId)}/events?${query}`,
 		env,
 	)
-	return { status: 200, body: { events: Array.isArray(events) ? events : [] } }
+	// Vercel has returned both a bare array and a wrapped object here; tolerate both.
+	const events = Array.isArray(raw)
+		? raw
+		: Array.isArray((raw as { events?: unknown[] })?.events)
+			? (raw as { events: unknown[] }).events
+			: []
+	return { status: 200, body: { events } }
 }
 
 /** Cancel an in-progress deployment. */
@@ -172,9 +239,11 @@ export async function handleCancel(
 ): Promise<ProxyResult> {
 	const denied = checkStatusKey(params.statusKey, env)
 	if (denied) return denied
-	const project = params.key ? env.projects[params.key] : undefined
+	const project = params.key ? env.projects[params.key.trim().toLowerCase()] : undefined
 	if (!project) return { status: 404, body: { error: 'Unknown target key' } }
 	if (!params.deploymentId) return { status: 400, body: { error: 'Missing deploymentId' } }
+	const wrongProject = await assertDeploymentInProject(params.deploymentId, project, env)
+	if (wrongProject) return wrongProject
 
 	const query = new URLSearchParams()
 	if (project.teamId) query.set('teamId', project.teamId)

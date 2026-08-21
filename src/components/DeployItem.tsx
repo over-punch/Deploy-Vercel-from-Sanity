@@ -76,7 +76,12 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 
 	// ── Fetch deployments ──────────────────────────────────────────────────────
 	const fetchDeployments = useCallback(async () => {
-		if (!projectId || !hookId || !token) return
+		// Proxy targets deliberately have no hook URL and no token — requiring them
+		// here silently disabled polling, history, cancel and logs in proxy mode.
+		const ready = transport.mode === 'proxy'
+			? Boolean(target.proxyKey && pluginConfig.proxyUrl)
+			: Boolean(projectId && hookId && token)
+		if (!ready) return
 		const seq = ++requestSeqRef.current
 		try {
 			const data = await transportFetch(transport, targetRef)
@@ -91,7 +96,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 			setPollError(err instanceof Error ? err.message : 'Could not reach the Vercel API')
 			console.error('Deploy-vercel-from-sanity: fetch error', err)
 		}
-	}, [projectId, hookId, token, target.teamId])
+	}, [projectId, hookId, token, target.teamId, target.proxyKey, transport.mode, pluginConfig.proxyUrl])
 
 	useEffect(() => {
 		fetchDeployments().finally(() => setLoadingInitial(false))
@@ -334,7 +339,13 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 
 							{/* ── Status + metadata ──────────────────────────────── */}
 							{!token ? (
-								<Text size={1} muted>Connect a Vercel API token to see deployment status.</Text>
+								<Text size={1} muted>
+									{pluginConfig.mode === 'proxy'
+										? target.proxyKey
+											? 'Waiting for status from the deploy proxy.'
+											: 'Set a Proxy Key on this target to see deployment status.'
+										: 'Connect a Vercel API token to see deployment status.'}
+								</Text>
 							) : loadingInitial ? (
 								<Flex align="center" gap={2}>
 									<Spinner muted />

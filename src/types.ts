@@ -113,9 +113,10 @@ export interface VercelDeployPluginConfig {
 	 * Key sent with status requests to the proxy.
 	 *
 	 * This ends up in the Studio bundle, which is served publicly for a hosted
-	 * Studio, so treat it as public. It is deliberately low-value: it permits
-	 * reading deployment status for the configured projects and nothing else. The
-	 * Vercel API token never leaves the proxy.
+	 * Studio, so treat it as public. It permits reading deployment status and build
+	 * logs for the configured projects, and cancelling their in-progress
+	 * deployments — cancel is a write, so this is not a read-only key. The Vercel
+	 * API token never leaves the proxy.
 	 */
 	statusKey?: string
 }

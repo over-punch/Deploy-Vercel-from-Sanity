@@ -24,6 +24,25 @@ installs need no changes.
 - Optional `VERCEL_DEPLOY_ALLOWED_ROLES` on the proxy, checked against
   `_createdBy`, which Sanity stamps and the client cannot forge.
 
+### Fixed before release
+
+A README and persona-panel review of the proxy caught defects in it:
+
+- Proxy mode's entire status half was dead code — the fetch guard still required a
+  hook URL and a token, which proxy targets deliberately lack, so polling, history,
+  cancel and build logs never ran while deploys succeeded silently.
+- No CORS handling, so every cross-origin status call from the Studio was blocked at
+  the preflight. Added an allowlist, an `OPTIONS` handler, and error responses that
+  carry CORS headers — without which every operational fault surfaced as
+  "Failed to fetch" instead of the real message.
+- `deploymentId` was never checked against the target's project, so a holder of the
+  (public by design) status key could read build logs for, and cancel, any
+  deployment the token could see. Now verified against the deployment's `projectId`.
+- An unset status key served everyone rather than failing closed.
+- Build logs came back oldest-first and the wrapped response shape was discarded, so
+  a failed build showed the top of its log and never the error.
+- Editing a target's proxy key left the card polling the old one until reload.
+
 ### Changed
 
 - The deploy hook URL is no longer unconditionally required on a target; a target

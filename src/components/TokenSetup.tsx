@@ -109,7 +109,7 @@ export function TokenSetup({ onSaved, onCancel, hasToken = false }: TokenSetupPr
 					</Text>
 					<Text size={1} muted>
 						Create one at <strong>vercel.com → Settings → Tokens</strong> with{' '}
-						<strong>Full Account</strong> scope. The token is stored in your Sanity dataset
+						scope limited to the <strong>team</strong> that owns your projects. The token is stored in cleartext in your Sanity dataset — readable by anyone who can read the dataset, including unauthenticated readers if it is public
 						and shared across all authenticated studio users.
 					</Text>
 				</Stack>

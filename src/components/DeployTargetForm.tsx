@@ -169,7 +169,9 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 							placeholder="team_xxxxxxxx"
 						/>
 						<Text id={teamHelpId} size={0} muted>
-							Required for team-owned Vercel projects. Find it at Vercel → Settings → General → Team ID (starts with <code>team_</code>).
+							{isProxy
+								? 'Not used in proxy mode — the proxy supplies the team from its own configuration.'
+								: 'Required for team-owned Vercel projects. Find it at Vercel → Settings → General → Team ID (starts with team_).'}
 						</Text>
 					</Stack>
 

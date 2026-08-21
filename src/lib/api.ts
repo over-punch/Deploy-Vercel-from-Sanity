@@ -18,7 +18,7 @@ async function vercelFetch<T>(path: string, token: string, init?: RequestInit): 
 	if (!res.ok) {
 		const hint =
 			res.status === 401 ? ' — token is invalid or expired. Reconnect your API token.' :
-			res.status === 403 ? ' — token lacks the required permissions. Ensure it has Full Account scope.' :
+			res.status === 403 ? ' — token lacks the required permissions. Scope it to the team that owns the project, and set the target\'s Team ID.' :
 			res.status === 404 ? ' — resource not found. Check the deploy hook URL and team ID.' :
 			res.status === 429 ? ' — rate limit reached. Wait a moment and try again.' :
 			res.status >= 500  ? ' — Vercel is experiencing issues. Try again shortly.' :
@@ -94,7 +94,7 @@ export async function getDeploymentEvents(opts: {
 	if (opts.teamId) params.set('teamId', opts.teamId)
 	// API returns either a plain array or a wrapped object depending on version
 	const raw = await vercelFetch<DeploymentEvent[] | { events?: DeploymentEvent[] }>(
-		`/v2/deployments/${opts.deploymentId}/events?${params}`,
+		`/v2/deployments/${encodeURIComponent(opts.deploymentId)}/events?${params}`,
 		opts.token,
 	)
 	const events: DeploymentEvent[] = Array.isArray(raw) ? raw : (raw.events ?? [])
