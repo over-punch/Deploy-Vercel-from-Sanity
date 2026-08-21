@@ -1,7 +1,7 @@
 // Toast delivery — Studio's own toast system where available, a local live-region viewport otherwise
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { UI, resolveExport } from './resolve'
+import { UI, resolveFunction } from './resolve'
 import { Box, Button, Card, Flex, Stack, Text } from './primitives'
 import { CloseIcon } from '../icons'
 
@@ -28,7 +28,8 @@ const MAX_VISIBLE_TOASTS = 4
 const TOAST_Z_INDEX = 1000000
 
 /** Card tone per toast status, used only by the fallback viewport. */
-const LOCAL_TOAST_TONE: Record<string, 'positive' | 'critical' | 'caution' | 'primary'> = {
+type ToastStatus = NonNullable<ToastParams['status']>
+const LOCAL_TOAST_TONE: Record<ToastStatus, 'positive' | 'critical' | 'caution' | 'primary'> = {
 	success: 'positive',
 	error: 'critical',
 	warning: 'caution',
@@ -36,7 +37,7 @@ const LOCAL_TOAST_TONE: Record<string, 'positive' | 'critical' | 'caution' | 'pr
 }
 
 /** Statuses that stay until dismissed — they carry text the user is expected to act on. */
-const PERSISTENT_STATUSES = new Set(['error', 'warning'])
+const PERSISTENT_STATUSES: ReadonlySet<ToastStatus> = new Set<ToastStatus>(['error', 'warning'])
 
 let nextToastId = 0
 let localToasts: LocalToast[] = []
@@ -70,13 +71,23 @@ function scheduleDismiss(id: number, status: ToastParams['status']): void {
 /** Queue a fallback toast, trimming the oldest if the column is already full. */
 function pushLocalToast(params: ToastParams): void {
 	const toast: LocalToast = { ...params, id: nextToastId++ }
-	localToasts = [...localToasts, toast].slice(-MAX_VISIBLE_TOASTS)
+	const next = [...localToasts, toast]
+	// Cancel timers for anything trimmed off the front, or they fire for an id that
+	// is no longer queued and publish a pointless re-render to every viewport.
+	for (const dropped of next.slice(0, Math.max(0, next.length - MAX_VISIBLE_TOASTS))) {
+		const timer = dismissTimers.get(dropped.id)
+		if (timer) {
+			clearTimeout(timer)
+			dismissTimers.delete(dropped.id)
+		}
+	}
+	localToasts = next.slice(-MAX_VISIBLE_TOASTS)
 	emitToasts()
 	scheduleDismiss(toast.id, toast.status)
 }
 
 /** The real hook when the installed @sanity/ui still exports it, otherwise undefined. */
-const installedUseToast = resolveExport<() => Toaster>(UI, 'useToast')
+const installedUseToast = resolveFunction<() => Toaster>(UI, 'useToast')
 
 /** Stable fallback toaster — identity never changes, so it is safe in dependency arrays. */
 const localToaster: Toaster = { push: pushLocalToast }
@@ -113,6 +124,12 @@ export function ToastViewport(): React.JSX.Element | null {
 		return () => { toastListeners.delete(setToasts) }
 	}, [])
 
+	/** Re-arm auto-dismiss, unless the toast still holds focus. */
+	const resume = useCallback((toast: LocalToast, el: HTMLElement | null) => {
+		if (el && el.contains(document.activeElement)) return
+		scheduleDismiss(toast.id, toast.status)
+	}, [])
+
 	const hold = useCallback((id: number) => {
 		const timer = dismissTimers.get(id)
 		if (timer) {
@@ -125,9 +142,11 @@ export function ToastViewport(): React.JSX.Element | null {
 
 	return (
 		<Box
-			role="status"
-			aria-live="polite"
-			aria-atomic={false}
+			// role="log" carries aria-live="polite" with atomic=false and
+			// relevant="additions", which is what an append-only stack wants —
+			// role="status" implies atomic=true and re-announces the whole column.
+			role="log"
+			aria-label="Deployment notifications"
 			// pointer-events is released so the fixed column cannot swallow clicks on the tool beneath it.
 			style={{
 				position: 'fixed',
@@ -145,11 +164,12 @@ export function ToastViewport(): React.JSX.Element | null {
 						padding={3}
 						radius={2}
 						shadow={3}
-						tone={LOCAL_TOAST_TONE[toast.status ?? 'info'] ?? 'primary'}
+						tone={LOCAL_TOAST_TONE[toast.status ?? 'info']}
 						style={{ pointerEvents: 'auto' }}
 						onMouseEnter={() => hold(toast.id)}
 						onFocusCapture={() => hold(toast.id)}
-						onMouseLeave={() => scheduleDismiss(toast.id, toast.status)}
+						onMouseLeave={e => resume(toast, e.currentTarget)}
+						onBlurCapture={e => resume(toast, e.currentTarget)}
 					>
 						<Flex align="flex-start" gap={3}>
 							<Stack space={2} flex={1}>

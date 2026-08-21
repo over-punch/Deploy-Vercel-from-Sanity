@@ -1,4 +1,5 @@
 // Reads the installed @sanity/ui and @sanity/icons namespaces so relocated exports degrade instead of failing to link
+import type { ComponentType } from 'react'
 import * as sanityUi from '@sanity/ui'
 import * as sanityIcons from '@sanity/icons'
 
@@ -25,18 +26,52 @@ export const UI = sanityUi as unknown as Record<string, unknown>
 export const ICONS = sanityIcons as unknown as Record<string, unknown>
 
 /**
- * Look up one export by name, returning undefined when the installed major no
- * longer provides it.
+ * Look up a component-like export, returning undefined when the installed major
+ * no longer provides it.
+ *
+ * Accepts a function (a plain function component) or a non-null object (a
+ * `forwardRef`/`memo` exotic component). A deprecation tombstone that is neither
+ * is treated as absent.
+ *
+ * The return type is constrained to a component rather than an open generic, so a
+ * caller cannot name an arbitrary shape the runtime guard does not establish.
  *
  * @param ns   Namespace to read — {@link UI} or {@link ICONS}.
  * @param name Exact export name, e.g. `Tooltip`.
  */
-export function resolveExport<T>(ns: Record<string, unknown>, name: string): T | undefined {
+export function resolveComponent<P>(ns: Record<string, unknown>, name: string): ComponentType<P> | undefined {
 	const value = ns[name]
-	// A deprecation tombstone can be present but not callable; only accept usable values.
 	return typeof value === 'function' || (typeof value === 'object' && value !== null)
-		? (value as T)
+		? (value as ComponentType<P>)
 		: undefined
+}
+
+/**
+ * Look up a callable export, such as a hook.
+ *
+ * Stricter than {@link resolveComponent}: only a function passes. An object
+ * tombstone would otherwise read as present and then throw on call.
+ *
+ * @param ns   Namespace to read — {@link UI} or {@link ICONS}.
+ * @param name Exact export name, e.g. `useToast`.
+ */
+export function resolveFunction<F extends (...args: never[]) => unknown>(
+	ns: Record<string, unknown>,
+	name: string,
+): F | undefined {
+	const value = ns[name]
+	return typeof value === 'function' ? (value as F) : undefined
+}
+
+/**
+ * Look up a plain object export, such as @sanity/icons' symbol map.
+ *
+ * @param ns   Namespace to read.
+ * @param name Exact export name, e.g. `icons`.
+ */
+export function resolveRecord(ns: Record<string, unknown>, name: string): Record<string, unknown> | undefined {
+	const value = ns[name]
+	return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined
 }
 
 /**

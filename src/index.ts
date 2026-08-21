@@ -3,11 +3,9 @@ import { definePlugin } from 'sanity'
 import { RocketIcon } from './icons'
 import { DeployTool } from './components/DeployTool'
 import { vercelDeploySchema } from './schema/vercelDeploy'
-import { vercelConfigSchema } from './schema/vercelConfig'
 import type { VercelDeployPluginConfig } from './types'
 
 export { vercelDeploySchema } from './schema/vercelDeploy'
-export { vercelConfigSchema } from './schema/vercelConfig'
 export type { VercelDeployPluginConfig, DeployTarget, VercelDeployment, VercelDeployState } from './types'
 
 /**
@@ -33,7 +31,7 @@ export const vercelDeploy = definePlugin<VercelDeployPluginConfig | void>(option
 	return {
 		name: 'deploy-vercel-from-sanity',
 		schema: {
-			types: [vercelDeploySchema, vercelConfigSchema],
+			types: [vercelDeploySchema],
 		},
 		tools: [
 			{

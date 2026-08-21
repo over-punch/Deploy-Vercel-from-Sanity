@@ -1,7 +1,7 @@
 // Version-agnostic access to @sanity/icons — named exports on v2/v3/v4, <Icon symbol> on v5+
 import { forwardRef } from 'react'
 import type { ComponentType, SVGProps } from 'react'
-import { ICONS, resolveExport } from './compat/resolve'
+import { ICONS, resolveComponent, resolveRecord } from './compat/resolve'
 
 /** Props every Sanity icon accepts — it renders a plain sized SVG. */
 export type IconProps = SVGProps<SVGSVGElement>
@@ -30,7 +30,7 @@ type SymbolIcon = ComponentType<IconProps & { symbol: string }>
  * a renamed glyph would otherwise vanish silently rather than reaching
  * {@link MissingIcon}.
  */
-const SYMBOL_MAP = resolveExport<Record<string, unknown>>(ICONS, 'icons')
+const SYMBOL_MAP = resolveRecord(ICONS, 'icons')
 
 /**
  * Resolve one glyph against whichever @sanity/icons the host Studio installed.
@@ -46,10 +46,10 @@ const SYMBOL_MAP = resolveExport<Record<string, unknown>>(ICONS, 'icons')
  * @param symbol Kebab-case symbol used by the v5+ `<Icon>` component, e.g. `rocket`.
  */
 function resolveIcon(name: string, symbol: string): IconComponent {
-	const named = resolveExport<IconComponent>(ICONS, name)
+	const named = resolveComponent<IconProps>(ICONS, name)
 	if (named) return named
 
-	const Icon = resolveExport<SymbolIcon>(ICONS, 'Icon')
+	const Icon = resolveComponent<IconProps & { symbol: string }>(ICONS, 'Icon')
 	if (!Icon) return MissingIcon
 	// An unknown symbol would render nothing at all; fall back to the sized placeholder instead.
 	if (SYMBOL_MAP && !(symbol in SYMBOL_MAP)) return MissingIcon

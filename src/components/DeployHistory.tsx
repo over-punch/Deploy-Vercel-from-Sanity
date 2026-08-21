@@ -1,5 +1,5 @@
 // Deployment history modal — shows last 10 deployments for a target
-import { useEffect, useState, useCallback } from 'react'
+import { useId, useEffect, useState, useCallback } from 'react'
 import { LaunchIcon, CloseIcon } from '../icons'
 import { listDeployments } from '../lib/api'
 import { parseHookUrl, stateLabel, timeAgo, shortSha, safeHref, deploymentHref } from '../lib/helpers'
@@ -13,6 +13,7 @@ interface DeployHistoryProps {
 }
 
 export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
+	const dialogId = useId()
 	const [deployments, setDeployments] = useState<VercelDeployment[]>([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
@@ -37,7 +38,7 @@ export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 	return (
 		<Dialog
 			header={`${target.name} — Deployment History`}
-			id="deploy-history"
+			id={dialogId}
 			onClose={onClose}
 			width={2}
 			footer={

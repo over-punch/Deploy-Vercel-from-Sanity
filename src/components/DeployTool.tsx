@@ -249,6 +249,7 @@ export function DeployTool() {
 				<TokenSetup
 					onSaved={() => { setShowTokenSetup(false); load() }}
 					onCancel={() => setShowTokenSetup(false)}
+					hasToken={Boolean(token)}
 				/>
 			)}
 

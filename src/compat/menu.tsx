@@ -1,7 +1,7 @@
 // Overflow menu — Studio's MenuButton where available, a WAI-ARIA menu button implementation otherwise
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import type { ComponentType, SVGProps } from 'react'
-import { UI, resolveExport } from './resolve'
+import type { ComponentType, ReactNode, SVGProps } from 'react'
+import { UI, resolveComponent } from './resolve'
 import { Button, Card, Flex, Stack, Text } from './primitives'
 
 /** An icon component, matching what this plugin's icon shim produces. */
@@ -22,9 +22,40 @@ export type ActionMenuProps = {
 	buttonIcon: IconComponent
 }
 
-const InstalledMenuButton = resolveExport<ComponentType<Record<string, unknown>>>(UI, 'MenuButton')
-const InstalledMenu = resolveExport<ComponentType<Record<string, unknown>>>(UI, 'Menu')
-const InstalledMenuItem = resolveExport<ComponentType<Record<string, unknown>>>(UI, 'MenuItem')
+/*
+ * Prop shapes for the installed menu trio, declared locally rather than taken from
+ * `typeof SanityUi.MenuButton`: on @sanity/ui v4 those are tombstoned as `never`,
+ * which would make this branch a build error even though it never runs there.
+ * Declaring them keeps the branch that DOES run on v2/v3 type-checked — an
+ * index-signature bag would accept any prop, on the only path most Studios take.
+ */
+
+/** Subset of @sanity/ui's MenuButtonProps this plugin passes. */
+type InstalledMenuButtonProps = {
+	id: string
+	button: React.JSX.Element
+	menu: React.JSX.Element
+	popover?: { placement?: string }
+}
+
+/** Subset of @sanity/ui's MenuProps this plugin passes. */
+type InstalledMenuProps = { children?: ReactNode }
+
+/** Subset of @sanity/ui's MenuItemProps this plugin passes, including the anchor form. */
+type InstalledMenuItemProps = {
+	text: string
+	icon: IconComponent
+	tone?: 'critical'
+	onClick?: () => void
+	as?: 'a'
+	href?: string
+	target?: string
+	rel?: string
+}
+
+const InstalledMenuButton = resolveComponent<InstalledMenuButtonProps>(UI, 'MenuButton')
+const InstalledMenu = resolveComponent<InstalledMenuProps>(UI, 'Menu')
+const InstalledMenuItem = resolveComponent<InstalledMenuItemProps>(UI, 'MenuItem')
 
 /** Whether the installed @sanity/ui still exports the full menu trio. */
 const INSTALLED_MENU = InstalledMenuButton && InstalledMenu && InstalledMenuItem
@@ -78,7 +109,12 @@ export function ActionMenu({ id, label, items, buttonIcon }: ActionMenuProps): R
 	useEffect(() => {
 		if (INSTALLED_MENU || !open) return
 		const onPointerDown = (e: MouseEvent) => {
-			if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+			if (wrapRef.current?.contains(e.target as Node)) return
+			// Only reclaim focus if it was inside the menu; otherwise the element the
+			// user just clicked should keep it.
+			const hadFocus = wrapRef.current?.contains(document.activeElement)
+			setOpen(false)
+			if (hadFocus) triggerRef.current?.focus()
 		}
 		document.addEventListener('mousedown', onPointerDown)
 		return () => document.removeEventListener('mousedown', onPointerDown)
@@ -119,7 +155,25 @@ export function ActionMenu({ id, label, items, buttonIcon }: ActionMenuProps): R
 	const onMenuKeyDown = (e: React.KeyboardEvent) => {
 		const last = shownItems.length - 1
 		if (e.key === 'Escape') { e.stopPropagation(); close(); return }
-		if (e.key === 'Tab') { close(false); return }
+		if (e.key === 'Tab') {
+			// Move focus to the trigger synchronously, then let the browser perform the
+			// default traversal from there. Closing first would unmount the focused item
+			// and drop focus to <body>, restarting tab order at the top of the Studio.
+			triggerRef.current?.focus()
+			setOpen(false)
+			return
+		}
+		if (e.key === 'Enter' || e.key === ' ') {
+			// Anchors do not activate on Space natively, so activation is handled here
+			// for every item shape rather than only for buttons.
+			e.preventDefault()
+			const item = shownItems[activeIndex]
+			if (item) {
+				if (item.href) { itemRefs.current[activeIndex]?.click() }
+				else { runAction(item) }
+			}
+			return
+		}
 		if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex(i => (i >= last ? 0 : i + 1)); return }
 		if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex(i => (i <= 0 ? last : i - 1)); return }
 		if (e.key === 'Home') { e.preventDefault(); setActiveIndex(0); return }
@@ -172,12 +226,16 @@ export function ActionMenu({ id, label, items, buttonIcon }: ActionMenuProps): R
 							const content = item.tone === 'critical'
 								? <Card tone="critical" radius={1}>{row}</Card>
 								: row
-							const shared = {
+							const shared: {
+								role: 'menuitem'
+								tabIndex: number
+								ref: (el: HTMLElement | null) => void
+								style: React.CSSProperties
+							} = {
 								role: 'menuitem',
 								// Roving tabindex — the menu is one tab stop, arrows move within it.
 								tabIndex: i === activeIndex ? 0 : -1,
 								ref: (el: HTMLElement | null) => { itemRefs.current[i] = el },
-								onMouseEnter: () => setActiveIndex(i),
 								style: {
 									display: 'block',
 									width: '100%',
@@ -202,19 +260,18 @@ export function ActionMenu({ id, label, items, buttonIcon }: ActionMenuProps): R
 									href={item.href}
 									target="_blank"
 									rel="noreferrer"
-									onClick={() => close(false)}
+									onClick={() => { setOpen(false); triggerRef.current?.focus() }}
 								>
 									{content}
 								</a>
 							) : (
-								<button
+								<div
 									key={itemKey(item, i)}
 									{...shared}
-									type="button"
 									onClick={() => runAction(item)}
 								>
 									{content}
-								</button>
+								</div>
 							)
 						})}
 					</Stack>

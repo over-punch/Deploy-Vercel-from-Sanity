@@ -20,6 +20,7 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 
 	// Ids for label/description association. useId keeps them unique inside a published
 	// plugin, where a hardcoded id can collide with anything the host Studio renders.
+	const dialogId    = useId()
 	const nameId      = useId()
 	const urlId       = useId()
 	const urlErrorId  = useId()
@@ -65,7 +66,7 @@ export function DeployTargetForm({ initial, onSaved, onClose }: DeployTargetForm
 	return (
 		<Dialog
 			header={isEdit ? `Edit "${initial?.name}"` : 'Add deploy target'}
-			id="deploy-target-form"
+			id={dialogId}
 			onClose={onClose}
 			width={1}
 			footer={

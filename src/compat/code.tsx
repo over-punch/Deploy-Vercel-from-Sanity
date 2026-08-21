@@ -1,13 +1,13 @@
 // Monospace block — Studio's Code where available, a styled <code> block otherwise
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
-import { UI, resolveExport } from './resolve'
+import { UI, resolveComponent } from './resolve'
 
 /** The real Code when the installed @sanity/ui still exports it, otherwise undefined. */
-const InstalledCode = resolveExport<ComponentType<{
+const InstalledCode = resolveComponent<{
 	size?: number
 	style?: CSSProperties
 	children: ReactNode
-}>>(UI, 'Code')
+}>(UI, 'Code')
 
 /**
  * Styling for the fallback Code element, approximating @sanity/ui's `size={1}`.

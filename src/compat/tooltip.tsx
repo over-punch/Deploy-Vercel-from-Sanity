@@ -1,33 +1,37 @@
 // Hover/focus hint — Studio's Tooltip where available, an accessible local tooltip otherwise
-import { useId, useState } from 'react'
-import type { ReactNode } from 'react'
-import { UI, resolveExport } from './resolve'
+import { cloneElement, isValidElement, useId, useState } from 'react'
+import type { ComponentType, ReactElement, ReactNode } from 'react'
+import { UI, resolveComponent } from './resolve'
 import { Box, Card, Text } from './primitives'
-import type { ComponentType } from 'react'
 
 /** Props for the compat Tooltip — plain text rather than @sanity/ui's ReactNode `content`. */
 export type TooltipProps = {
-	/** Hint text. Also used as the accessible description of the wrapped control. */
+	/** Hint text. Also becomes the accessible description of the wrapped control while shown. */
 	text: string
 	children: ReactNode
 }
 
 /** The real Tooltip when the installed @sanity/ui still exports it, otherwise undefined. */
-const InstalledTooltip = resolveExport<ComponentType<{
+const InstalledTooltip = resolveComponent<{
 	content: ReactNode
 	portal?: boolean
 	children: ReactNode
-}>>(UI, 'Tooltip')
+}>(UI, 'Tooltip')
 
 /**
  * Hint shown on hover and on keyboard focus.
  *
- * The fallback deliberately does not use the native `title` attribute: `title`
- * never appears on keyboard focus, never appears on touch, cannot be dismissed,
- * and browsers will not re-read it while the pointer is stationary — which
- * silently broke the copy button's "Copied!" confirmation. This renders a real
- * element instead and wires it to the wrapped control via `aria-describedby`,
- * so the text is announced and updates when it changes.
+ * The fallback avoids the native `title` attribute: it never appears on keyboard
+ * focus or touch, cannot be dismissed, and browsers will not re-read it while the
+ * pointer is stationary — which is what silently broke the copy button's
+ * "Copied!" confirmation.
+ *
+ * `aria-describedby` is cloned onto the *child*, not the wrapper. A description is
+ * exposed from the focused element, so pointing it at a non-focusable ancestor
+ * would name nothing. It is also only attached while the tooltip is shown,
+ * because accname resolves directly-referenced hidden nodes — leaving it attached
+ * would expose the description permanently and make shown and hidden states
+ * indistinguishable.
  */
 export function Tooltip({ text, children }: TooltipProps): React.JSX.Element {
 	const id = useId()
@@ -41,38 +45,42 @@ export function Tooltip({ text, children }: TooltipProps): React.JSX.Element {
 		)
 	}
 
+	const described = visible && isValidElement(children)
+		? cloneElement(children as ReactElement<{ 'aria-describedby'?: string }>, { 'aria-describedby': id })
+		: children
+
 	return (
 		<span
 			style={{ position: 'relative', display: 'inline-flex' }}
-			aria-describedby={id}
 			onMouseEnter={() => setVisible(true)}
 			onMouseLeave={() => setVisible(false)}
 			onFocusCapture={() => setVisible(true)}
 			onBlurCapture={() => setVisible(false)}
-			onKeyDown={e => { if (e.key === 'Escape') setVisible(false) }}
+			// Scoped so dismissing a tooltip inside a Dialog does not also close the Dialog.
+			onKeyDown={e => { if (e.key === 'Escape' && visible) { e.stopPropagation(); setVisible(false) } }}
 		>
-			{children}
-			<Card
-				id={id}
-				role="tooltip"
-				radius={2}
-				shadow={2}
-				padding={2}
-				style={{
-					position: 'absolute',
-					bottom: '100%',
-					left: '50%',
-					transform: 'translateX(-50%)',
-					marginBottom: 4,
-					whiteSpace: 'nowrap',
-					pointerEvents: 'none',
-					zIndex: 1000,
-					// Kept in the accessibility tree when hidden so `aria-describedby` still resolves.
-					visibility: visible ? 'visible' : 'hidden',
-				}}
-			>
-				<Text size={1}>{text}</Text>
-			</Card>
+			{described}
+			{visible && (
+				<span
+					id={id}
+					role="tooltip"
+					style={{
+						position: 'absolute',
+						bottom: '100%',
+						left: '50%',
+						transform: 'translateX(-50%)',
+						// No gap between trigger and tooltip, so the pointer can travel onto it
+						// without leaving the hover target (WCAG 1.4.13 Hoverable).
+						paddingBottom: 4,
+						whiteSpace: 'nowrap',
+						zIndex: 1000,
+					}}
+				>
+					<Card radius={2} shadow={2} padding={2}>
+						<Text size={1}>{text}</Text>
+					</Card>
+				</span>
+			)}
 		</span>
 	)
 }

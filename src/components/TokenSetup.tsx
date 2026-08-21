@@ -1,24 +1,28 @@
 // Vercel API token form — rendered inside a Dialog by DeployTool
 import { useId, useState, useCallback } from 'react'
 import { useClient } from 'sanity'
-import { CheckmarkCircleIcon } from '../icons'
+import { CheckmarkCircleIcon, TrashIcon } from '../icons'
 import { Button, Card, Dialog, Flex, Label, Stack, Text, TextInput } from '../compat'
 
 interface TokenSetupProps {
 	/** Called after the token is successfully saved */
 	onSaved: () => void
-	/** Called when the user dismisses — only available when a token already exists */
+	/** Called when the user dismisses the dialog */
 	onCancel?: () => void
+	/** Whether a token is already stored — enables the revoke action */
+	hasToken?: boolean
 }
 
 const TOKEN_DOC_ID = 'config.vercelDeploy'
 
-export function TokenSetup({ onSaved, onCancel }: TokenSetupProps) {
+export function TokenSetup({ onSaved, onCancel, hasToken = false }: TokenSetupProps) {
+	const dialogId = useId()
 	const tokenId = useId()
 	const client = useClient({ apiVersion: '2025-01-01' })
 	const [token, setToken] = useState('')
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [revoking, setRevoking] = useState(false)
 
 	const save = useCallback(async () => {
 		if (!token.trim()) return
@@ -38,14 +42,48 @@ export function TokenSetup({ onSaved, onCancel }: TokenSetupProps) {
 		}
 	}, [client, token, onSaved])
 
+	/**
+	 * Deletes the stored token document.
+	 *
+	 * The document type is deliberately not registered in the schema — registering
+	 * it would list "Vercel Deploy Configuration" in the Structure sidebar for every
+	 * editor. Revoking belongs here, in the tool that owns the credential, rather
+	 * than in the content UI.
+	 */
+	const revoke = useCallback(async () => {
+		setRevoking(true)
+		setError(null)
+		try {
+			await client.delete(TOKEN_DOC_ID)
+			onSaved()
+		} catch (err) {
+			setError(err instanceof Error ? err.message : 'Failed to remove token')
+		} finally {
+			setRevoking(false)
+		}
+	}, [client, onSaved])
+
 	return (
 		<Dialog
 			header="Connect Vercel API token"
-			id="token-setup"
+			id={dialogId}
 			onClose={onCancel}
 			width={1}
 			footer={
-				<Flex padding={3} gap={2} justify="flex-end">
+				<Flex padding={3} gap={2} justify={hasToken ? 'space-between' : 'flex-end'}>
+					{hasToken && (
+						<Button
+							text="Remove token"
+							mode="ghost"
+							tone="critical"
+							icon={TrashIcon}
+							loading={revoking}
+							disabled={revoking || saving}
+							onClick={revoke}
+							style={{ cursor: 'pointer' }}
+						/>
+					)}
+					<Flex gap={2}>
 					{onCancel && (
 						<Button text="Cancel" mode="ghost" onClick={onCancel} style={{ cursor: 'pointer' }} />
 					)}
@@ -58,6 +96,7 @@ export function TokenSetup({ onSaved, onCancel }: TokenSetupProps) {
 						onClick={save}
 						style={{ cursor: 'pointer' }}
 					/>
+					</Flex>
 				</Flex>
 			}
 		>

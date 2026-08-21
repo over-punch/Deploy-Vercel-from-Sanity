@@ -49,7 +49,14 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const requestSeqRef = useRef(0)
 	/** False once the card unmounts, so in-flight responses stop updating state. */
 	const mountedRef = useRef(true)
-	useEffect(() => () => { mountedRef.current = false }, [])
+	useEffect(() => {
+		// Re-armed on mount, not just cleared on unmount: StrictMode runs
+		// mount -> cleanup -> mount, and `sanity dev` enables it by default. Without
+		// this the flag stays false for the life of the card and every response is
+		// discarded, leaving a permanently empty card in development only.
+		mountedRef.current = true
+		return () => { mountedRef.current = false }
+	}, [])
 
 	const latest = deployments[0]
 	/** True between the click and the API returning a new deployment — drives the optimistic "Queued" state */
@@ -367,16 +374,35 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 										{/* Visit link + copy URL */}
 										{latest?.url && latest.state === 'READY' && (
 											<>
-												<Tooltip text={copied ? 'Copied!' : 'Copy URL'}>
+												<Tooltip text={copied ? 'Copied' : 'Copy deployment URL'}>
 													<Button
 														mode="ghost"
 														icon={copied ? CheckmarkIcon : CopyIcon}
 														padding={1}
 														tone={copied ? 'positive' : 'default'}
 														onClick={copyUrl}
+														// The button is icon-only, so it needs its own name — a tooltip
+														// describes a control, it does not name it. The name also carries
+														// the copied state, since colour and glyph alone do not (1.4.1).
+														aria-label={copied ? 'Deployment URL copied' : 'Copy deployment URL'}
 														style={{ cursor: 'pointer' }}
 													/>
 												</Tooltip>
+												{/* Announced separately: a changed aria-label is not reliably re-read. */}
+												<span
+													role="status"
+													aria-live="polite"
+													style={{
+														position: 'absolute',
+														width: 1,
+														height: 1,
+														overflow: 'hidden',
+														clip: 'rect(0 0 0 0)',
+														whiteSpace: 'nowrap',
+													}}
+												>
+													{copied ? 'Deployment URL copied to clipboard' : ''}
+												</span>
 											</>
 										)}
 									</Flex>
@@ -465,7 +491,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 							{/* Polling failures were previously logged only, so a card that had stopped
 							    updating looked identical to an idle one. */}
 							{pollError && (
-								<Card tone="caution" padding={3} radius={2} role="status">
+								<Card tone="caution" padding={3} radius={2}>
 									<Flex align="center" gap={2}>
 										<WarningOutlineIcon aria-hidden="true" />
 										<Text size={1}>Status updates paused — {pollError}</Text>

@@ -2,7 +2,7 @@
 import { createElement, forwardRef } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import type * as SanityUi from '@sanity/ui'
-import { UI, resolveExport, STACK_USES_GAP } from './resolve'
+import { UI, resolveComponent, STACK_USES_GAP } from './resolve'
 
 /** Loose props for a resolved @sanity/ui primitive — upstream types vary by major. */
 type AnyProps = Record<string, unknown>
@@ -17,16 +17,22 @@ type AnyProps = Record<string, unknown>
  */
 function domFallback(tag: string): ComponentType<AnyProps> {
 	const Fallback = forwardRef<HTMLElement, AnyProps>(function SanityUiFallback(props, ref) {
-		const { children, style, id, className, onClick, href, title, ...rest } = props
-		// Forward only attributes that are meaningful on a bare element.
+		const { children, style, id, className, onClick, href, title, as, ...rest } = props
+		// `as` is honoured so `Button as="a" href` degrades to a link rather than a
+		// dead <button href>, and `Label as="label" htmlFor` keeps its association.
+		const element = typeof as === 'string' ? as : tag
 		const passthrough: AnyProps = { style, id, className, onClick, href, title, ref }
-		for (const key of ['role', 'type', 'value', 'checked', 'placeholder', 'disabled', 'onChange', 'onKeyDown']) {
+		for (const key of [
+			'role', 'type', 'value', 'checked', 'placeholder', 'disabled', 'tabIndex',
+			'onChange', 'onKeyDown', 'onFocus', 'onBlur', 'onMouseEnter', 'onMouseLeave',
+			'htmlFor', 'target', 'rel', 'name', 'autoComplete', 'required', 'readOnly',
+		]) {
 			if (key in rest) passthrough[key] = rest[key]
 		}
 		for (const key of Object.keys(rest)) {
 			if (key.startsWith('aria-') || key.startsWith('data-')) passthrough[key] = rest[key]
 		}
-		return createElement(tag, passthrough, children as ReactNode)
+		return createElement(element, passthrough, children as ReactNode)
 	})
 	Fallback.displayName = `SanityUiFallback(${tag})`
 	return Fallback as unknown as ComponentType<AnyProps>
@@ -41,7 +47,7 @@ function domFallback(tag: string): ComponentType<AnyProps> {
  * @param tag  DOM element to degrade to.
  */
 function primitive(name: string, tag: string): ComponentType<AnyProps> {
-	return resolveExport<ComponentType<AnyProps>>(UI, name) ?? domFallback(tag)
+	return resolveComponent<AnyProps>(UI, name) ?? domFallback(tag)
 }
 
 /*
