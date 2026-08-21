@@ -55,10 +55,16 @@ export async function cancelDeployment(opts: {
 	token: string
 	teamId?: string
 }): Promise<void> {
-	const params = opts.teamId ? `?teamId=${opts.teamId}` : ''
-	await vercelFetch(`/v12/deployments/${opts.deploymentId}/cancel${params}`, opts.token, {
-		method: 'PATCH',
-	})
+	// teamId is free text from the target document — encode it rather than splicing it in raw,
+	// or an '&' injects extra parameters into an authenticated request.
+	const params = new URLSearchParams()
+	if (opts.teamId) params.set('teamId', opts.teamId)
+	const query = params.toString() ? `?${params}` : ''
+	await vercelFetch(
+		`/v12/deployments/${encodeURIComponent(opts.deploymentId)}/cancel${query}`,
+		opts.token,
+		{ method: 'PATCH' },
+	)
 }
 
 /**

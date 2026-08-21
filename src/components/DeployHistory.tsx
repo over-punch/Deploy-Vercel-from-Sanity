@@ -1,13 +1,10 @@
 // Deployment history modal — shows last 10 deployments for a target
 import { useEffect, useState, useCallback } from 'react'
-import {
-	Dialog, Card, Box, Flex, Text, Badge, Spinner, Button,
-} from '@sanity/ui'
-import { Stack } from '../ui'
 import { LaunchIcon, CloseIcon } from '../icons'
 import { listDeployments } from '../lib/api'
-import { parseHookUrl, stateLabel, timeAgo, shortSha, safeHref } from '../lib/helpers'
+import { parseHookUrl, stateLabel, timeAgo, shortSha, safeHref, deploymentHref } from '../lib/helpers'
 import type { DeployTarget, VercelDeployment } from '../types'
+import { Badge, Box, Button, Card, Dialog, Flex, Spinner, Stack, Text } from '../compat'
 
 interface DeployHistoryProps {
 	target: DeployTarget
@@ -92,9 +89,9 @@ export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 									<Flex gap={3} align="center">
 										{/* Preview URL */}
 										<Box flex={2} style={{ overflow: 'hidden' }}>
-											{d.url ? (
+											{deploymentHref(d.url) ? (
 												<a
-													href={`https://${d.url}`}
+													href={deploymentHref(d.url)}
 													target="_blank"
 													rel="noreferrer"
 													style={{ color: 'inherit' }}
@@ -130,18 +127,23 @@ export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 											<Text size={1} muted>{timeAgo(d.created)}</Text>
 										</Box>
 
-										{/* Build logs link */}
+										{/* Build logs link. Rendered as a link, not a Button inside an anchor:
+										    nesting interactive content in <a> gives two focus stops and Enter
+										    activates the button, which has no handler, so the link never opens
+										    for keyboard users. */}
 										<Box style={{ width: 64 }}>
 											{safeHref(d.inspectorUrl) ? (
-												<a href={safeHref(d.inspectorUrl)} target="_blank" rel="noreferrer">
-													<Button
-														text="Logs"
-														mode="ghost"
-														tone="default"
-														icon={LaunchIcon}
-														style={{ fontSize: '12px' }}
-													/>
-												</a>
+												<Button
+													as="a"
+													href={safeHref(d.inspectorUrl)}
+													target="_blank"
+													rel="noreferrer"
+													text="Logs"
+													mode="ghost"
+													tone="default"
+													icon={LaunchIcon}
+													style={{ fontSize: '12px' }}
+												/>
 											) : (
 												<Text size={1} muted>—</Text>
 											)}

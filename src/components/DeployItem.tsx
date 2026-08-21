@@ -1,19 +1,16 @@
 // Per-deploy-target card — shows status, build timer, history, cancel, deploy, copy URL, and error logs
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import {
-	Card, Box, Flex, Text, Button, Badge, Spinner,
-} from '@sanity/ui'
-import { Stack, useToast, Tooltip, ActionMenu, Code } from '../ui'
+import { ActionMenu, Badge, Box, Button, Card, Code, Flex, Spinner, Stack, Text, Tooltip, useToast } from '../compat'
 import {
 	ClockIcon, TrashIcon, EllipsisVerticalIcon, LaunchIcon,
-	CopyIcon, CheckmarkIcon, WarningOutlineIcon, ChevronDownIcon, ChevronUpIcon, EditIcon, SchemaIcon
+	CopyIcon, CheckmarkIcon, WarningOutlineIcon, ChevronDownIcon, ChevronUpIcon, EditIcon,
 } from '../icons'
 import { listDeployments, cancelDeployment, triggerDeploy, getDeploymentEvents } from '../lib/api'
-import { parseHookUrl, isActiveState, formatDuration, timeAgo, shortSha, safeHref, projectHref, githubCommitHref } from '../lib/helpers'
+import { parseHookUrl, isActiveState, formatDuration, timeAgo, shortSha, safeHref, projectHref, githubCommitHref, deploymentHref } from '../lib/helpers'
 import { StatusBadge } from './StatusBadge'
 import { DeployHistory } from './DeployHistory'
-import type { DeployTarget, VercelDeployment } from '../types'
+import type { DeployTarget, VercelDeployment, VercelDeployState } from '../types'
 
 const POLL_INTERVAL_MS = 5_000
 const LABEL_WIDTH      = 64
@@ -44,9 +41,15 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const [errorLines, setErrorLines]        = useState<string[]>([])
 	const [loadingLogs, setLoadingLogs]      = useState(false)
 	const [logError, setLogError]            = useState<string | null>(null)
+	const [pollError, setPollError]          = useState<string | null>(null)
 
 	/** uid of the deployment that was latest when Deploy was clicked — lets us tell the optimistic state apart from a genuinely new deployment */
 	const triggeredFromUidRef = useRef<string | undefined>(undefined)
+	/** Monotonic request id — a slower earlier poll must not overwrite a newer response. */
+	const requestSeqRef = useRef(0)
+	/** False once the card unmounts, so in-flight responses stop updating state. */
+	const mountedRef = useRef(true)
+	useEffect(() => () => { mountedRef.current = false }, [])
 
 	const latest = deployments[0]
 	/** True between the click and the API returning a new deployment — drives the optimistic "Queued" state */
@@ -56,11 +59,19 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	// ── Fetch deployments ──────────────────────────────────────────────────────
 	const fetchDeployments = useCallback(async () => {
 		if (!projectId || !hookId || !token) return
+		const seq = ++requestSeqRef.current
 		try {
 			const data = await listDeployments({ projectId, hookId, token, teamId: target.teamId })
+			// Drop the response if a newer request has since been issued, or the card unmounted.
+			if (seq !== requestSeqRef.current || !mountedRef.current) return
 			setDeployments(data)
+			setPollError(null)
 		} catch (err) {
-			console.error('deploy-vercel-from-sanity: fetch error', err)
+			if (seq !== requestSeqRef.current || !mountedRef.current) return
+			// Surfaced in the card rather than only logged — the README documents rate-limit
+			// and auth failures as visible, and a silently frozen card looks identical to an idle one.
+			setPollError(err instanceof Error ? err.message : 'Could not reach the Vercel API')
+			console.error('Deploy-vercel-from-sanity: fetch error', err)
 		}
 	}, [projectId, hookId, token, target.teamId])
 
@@ -90,11 +101,11 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	}, [isPending])
 
 	//── Deploy-complete toast ─────────────────────────────────────────────────
-	const prevStateRef = useRef<string | undefined>(undefined)
+	const prevStateRef = useRef<VercelDeployState | undefined>(undefined)
 	useEffect(() => {
 		const current = latest?.state
 		const prev = prevStateRef.current
-		if (prev && isActiveState(prev as never) && current && !isActiveState(current as never)) {
+		if (prev && isActiveState(prev) && current && !isActiveState(current)) {
 			if (current === 'READY') {
 				toast.push({ status: 'success', title: `${target.name} deployed`, description: 'Build completed successfully' })
 			} else if (current === 'ERROR') {
@@ -164,7 +175,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 
 	const copyUrl = useCallback(() => {
 		if (!latest?.url) return
-		const fullUrl = `https://${latest.url}`
+		const fullUrl = deploymentHref(latest.url) ?? ''
 		navigator.clipboard.writeText(fullUrl).then(() => {
 			setCopied(true)
 			setTimeout(() => setCopied(false), 2000)
@@ -208,7 +219,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const commitMsg        = latest?.meta?.githubCommitMessage?.split('\n')[0]
 	const sha              = shortSha(latest?.meta?.githubCommitSha)
 	const fullSha          = latest?.meta?.githubCommitSha
-	const commitHref       = githubCommitHref(latest?.meta)
+	const commitHref       = safeHref(githubCommitHref(latest?.meta) ?? undefined)
 	const creator          = latest?.creator?.username
 	const deployedAt       = latest?.created ? timeAgo(latest.created) : null
 	const vercelProjectUrl = projectHref(latest?.inspectorUrl)
@@ -272,6 +283,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 								</Flex>
 								<ActionMenu
 									id={`menu-${target._id}`}
+									label={`Actions for ${target.name}`}
 									buttonIcon={EllipsisVerticalIcon}
 									items={[
 										{ text: 'Edit target', icon: EditIcon, onClick: () => onEdit(target) },
@@ -310,7 +322,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 										{latest?.url && latest.state === 'READY' && (
 											<>
 												<a
-													href={`https://${latest.url}`}
+													href={deploymentHref(latest.url)}
 													target="_blank"
 													rel="noreferrer"
 													style={{ color: 'inherit' }}
@@ -385,6 +397,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 										{isError && (
 											<Stack space={2}>
 												<Button
+													aria-expanded={showErrorLogs}
 													text={showErrorLogs ? 'Hide error details' : 'Show error details'}
 													mode="ghost"
 													tone="critical"
@@ -449,6 +462,17 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 								</Stack>
 							)}
 
+							{/* Polling failures were previously logged only, so a card that had stopped
+							    updating looked identical to an idle one. */}
+							{pollError && (
+								<Card tone="caution" padding={3} radius={2} role="status">
+									<Flex align="center" gap={2}>
+										<WarningOutlineIcon aria-hidden="true" />
+										<Text size={1}>Status updates paused — {pollError}</Text>
+									</Flex>
+								</Card>
+							)}
+
 						</Stack>
 
 						{/* ── Details accordion — flush to left/bottom/right ─────── */}
@@ -456,6 +480,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 							<Button
 								mode="ghost"
 								iconRight={showDetails ? ChevronUpIcon : ChevronDownIcon}
+								aria-expanded={showDetails}
 								text="Details"
 								fontSize={0}
 								padding={3}

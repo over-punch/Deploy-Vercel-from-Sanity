@@ -63,6 +63,23 @@ export function safeHref(url: string | undefined): string | undefined {
 	}
 }
 
+/**
+ * Builds a validated https URL from a Vercel deployment hostname.
+ *
+ * The API returns a bare host, so concatenating it fixes only the scheme —
+ * a value like `@evil.com` yields `https://@evil.com`, which navigates to an
+ * attacker-chosen host. Round-tripping through URL and checking the host was
+ * not rewritten closes that.
+ *
+ * @param host Deployment hostname from the Vercel API, e.g. `my-app-abc123.vercel.app`.
+ */
+export function deploymentHref(host: string | undefined): string | undefined {
+	if (!host) return undefined
+	// Reject anything carrying credentials, a scheme, a port or a path — a plain host only.
+	if (!/^[a-z0-9.-]+$/i.test(host)) return undefined
+	return safeHref(`https://${host}`)
+}
+
 /** Truncates a commit SHA to 7 chars */
 export function shortSha(sha: string | undefined): string {
 	return sha ? sha.slice(0, 7) : ''

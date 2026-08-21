@@ -1,7 +1,7 @@
 // Status badge for a Vercel deployment state
-import { Badge, Spinner, Flex } from '@sanity/ui'
 import { stateLabel } from '../lib/helpers'
 import type { VercelDeployState } from '../types'
+import { Badge, Flex, Spinner } from '../compat'
 
 interface StatusBadgeProps {
 	state: VercelDeployState | undefined

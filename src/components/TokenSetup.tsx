@@ -1,11 +1,8 @@
 // Vercel API token form — rendered inside a Dialog by DeployTool
-import { useState, useCallback } from 'react'
+import { useId, useState, useCallback } from 'react'
 import { useClient } from 'sanity'
-import {
-	Text, TextInput, Button, Card, Dialog, Flex,
-} from '@sanity/ui'
-import { Stack } from '../ui'
 import { CheckmarkCircleIcon } from '../icons'
+import { Button, Card, Dialog, Flex, Label, Stack, Text, TextInput } from '../compat'
 
 interface TokenSetupProps {
 	/** Called after the token is successfully saved */
@@ -17,6 +14,7 @@ interface TokenSetupProps {
 const TOKEN_DOC_ID = 'config.vercelDeploy'
 
 export function TokenSetup({ onSaved, onCancel }: TokenSetupProps) {
+	const tokenId = useId()
 	const client = useClient({ apiVersion: '2025-01-01' })
 	const [token, setToken] = useState('')
 	const [saving, setSaving] = useState(false)
@@ -78,8 +76,10 @@ export function TokenSetup({ onSaved, onCancel }: TokenSetupProps) {
 				</Stack>
 
 				<Stack space={2}>
-					<Text size={1} weight="semibold">Vercel API Token</Text>
+					{/* A plain Text is not a label — @sanity/ui's Label needs `as="label"` to render one. */}
+					<Label as="label" size={1} htmlFor={tokenId}>Vercel API Token</Label>
 					<TextInput
+						id={tokenId}
 						value={token}
 						onChange={e => setToken((e.target as HTMLInputElement).value)}
 						placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
@@ -88,7 +88,7 @@ export function TokenSetup({ onSaved, onCancel }: TokenSetupProps) {
 				</Stack>
 
 				{error && (
-					<Card tone="critical" padding={3} radius={2}>
+					<Card tone="critical" padding={3} radius={2} role="alert">
 						<Text size={1}>{error}</Text>
 					</Card>
 				)}

@@ -1,19 +1,19 @@
 // Main deploy tool — fetches targets + token, renders per-project cards
 import { useState, useEffect, useCallback } from 'react'
 import { useClient } from 'sanity'
-import {
-	Card, Box, Flex, Text, Heading, Spinner, Button, Dialog,
-} from '@sanity/ui'
-import { Stack, useToast, ToastViewport } from '../ui'
 import { TokenIcon, TrashIcon, WarningOutlineIcon, AddIcon } from '../icons'
 import { DeployItem } from './DeployItem'
 import { TokenSetup } from './TokenSetup'
 import { DeployTargetForm } from './DeployTargetForm'
 import { VERSION } from '../version'
 import type { DeployTarget } from '../types'
+import { Box, Button, Card, Dialog, Flex, Heading, Spinner, Stack, Text, ToastViewport, useToast } from '../compat'
 
 const TOKEN_QUERY   = `*[_id == "config.vercelDeploy"][0].accessToken`
-const TARGETS_QUERY = `*[_type == "vercel_deploy"] | order(_createdAt asc)`
+// `useClient` hands back a raw-perspective client, so drafts are returned alongside published
+// documents. `vercel_deploy` is a registered type and therefore editable from Structure, which
+// would otherwise render two cards for the same target.
+const TARGETS_QUERY = `*[_type == "vercel_deploy" && !(_id in path("drafts.**"))] | order(_createdAt asc)`
 
 export function DeployTool() {
 	const client = useClient({ apiVersion: '2025-01-01' })
@@ -49,7 +49,18 @@ export function DeployTool() {
 
 	// Inject responsive styles once on mount
 	useEffect(() => {
-		if (document.getElementById('dvfs-styles')) return
+		// Reference-counted: with two tools mounted, the one that skipped creation must not
+		// remove the stylesheet the other is still using.
+		const existing = document.getElementById('dvfs-styles')
+		if (existing) {
+			const n = Number(existing.dataset.refs ?? '1') + 1
+			existing.dataset.refs = String(n)
+			return () => {
+				const left = Number(existing.dataset.refs ?? '1') - 1
+				existing.dataset.refs = String(left)
+				if (left <= 0) existing.remove()
+			}
+		}
 		const style = document.createElement('style')
 		style.id = 'dvfs-styles'
 		style.textContent = `
@@ -70,7 +81,12 @@ export function DeployTool() {
 			}
 		`
 		document.head.appendChild(style)
-		return () => { document.getElementById('dvfs-styles')?.remove() }
+		style.dataset.refs = '1'
+		return () => {
+			const left = Number(style.dataset.refs ?? '1') - 1
+			style.dataset.refs = String(left)
+			if (left <= 0) style.remove()
+		}
 	}, [])
 
 	// Live subscription — update targets when documents change
@@ -90,7 +106,10 @@ export function DeployTool() {
 		if (!pendingDelete) return
 		setDeleting(true)
 		try {
+			// Remove the draft counterpart as well; deleting only the published id leaves the
+			// target behind and it reappears on the next load.
 			await client.delete(pendingDelete._id)
+			await client.delete(`drafts.${pendingDelete._id}`).catch(() => {})
 			setTargets(prev => prev.filter(t => t._id !== pendingDelete._id))
 			toast.push({ status: 'success', title: `Deleted "${pendingDelete.name}"` })
 		} catch (err) {
@@ -223,10 +242,13 @@ export function DeployTool() {
 			</Box>
 
 			{/* ── Token setup dialog ──────────────────────────────────────────── */}
+			{/* The token dialog is always dismissable. Withholding Cancel on first run —
+			    exactly when the user may not have a token to hand — made it a keyboard trap,
+			    since Sanity's Dialog holds focus and Escape was wired to the absent handler. */}
 			{showTokenSetup && (
 				<TokenSetup
 					onSaved={() => { setShowTokenSetup(false); load() }}
-					onCancel={token ? () => setShowTokenSetup(false) : undefined}
+					onCancel={() => setShowTokenSetup(false)}
 				/>
 			)}
 

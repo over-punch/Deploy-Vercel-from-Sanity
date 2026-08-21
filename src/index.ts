@@ -1,15 +1,20 @@
-// deploy-vercel-from-sanity — Sanity Studio v5 plugin for Vercel deployments
+// deploy-vercel-from-sanity — Sanity Studio plugin for Vercel deployments (Studio v3.30 through v6)
 import { definePlugin } from 'sanity'
 import { RocketIcon } from './icons'
 import { DeployTool } from './components/DeployTool'
 import { vercelDeploySchema } from './schema/vercelDeploy'
+import { vercelConfigSchema } from './schema/vercelConfig'
 import type { VercelDeployPluginConfig } from './types'
 
 export { vercelDeploySchema } from './schema/vercelDeploy'
+export { vercelConfigSchema } from './schema/vercelConfig'
 export type { VercelDeployPluginConfig, DeployTarget, VercelDeployment, VercelDeployState } from './types'
 
 /**
- * Sanity Studio v5 plugin — trigger and monitor Vercel deployments.
+ * Sanity Studio plugin — trigger and monitor Vercel deployments.
+ *
+ * Supports Studio v3.30 through v6 from a single build; see the compatibility
+ * table in the README for how @sanity/ui and @sanity/icons are resolved.
  *
  * @example
  * // sanity.config.ts
@@ -28,7 +33,7 @@ export const vercelDeploy = definePlugin<VercelDeployPluginConfig | void>(option
 	return {
 		name: 'deploy-vercel-from-sanity',
 		schema: {
-			types: [vercelDeploySchema],
+			types: [vercelDeploySchema, vercelConfigSchema],
 		},
 		tools: [
 			{

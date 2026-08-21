@@ -10,7 +10,14 @@ npm install
 
 Peer dependencies (provided by consuming projects):
 - `react` >= 18
-- `sanity` >= 5
+- `react-dom` >= 18
+- `sanity` >= 3.30
+- `@sanity/ui` >= 2 < 5
+- `@sanity/icons` >= 2 < 6
+
+`@sanity/ui` and `@sanity/icons` are normally transitive dependencies of `sanity`
+rather than direct entries in a studio's package.json, so they resolve by hoisting.
+Under pnpm's isolated store or Yarn PnP you may need to install them explicitly.
 
 ### 2. Configure NPM Authentication
 
@@ -199,9 +206,15 @@ cd sites/positype/sanity && npm install @liiift-studio/deploy-vercel-from-sanity
 
 ## Release Checklist
 
-- [ ] Test changes with `npm link` in at least one studio
+- [ ] Test changes with `npm link` in at least one studio — note which `@sanity/ui`
+      major that studio resolves. Under `npm link` the namespace imports resolve
+      against **this package's** node_modules (ui 4 / icons 5), so linking alone
+      does not exercise the v2/v3 paths.
+- [ ] Typecheck against the oldest and newest supported majors, not just the installed one
 - [ ] Run `npm run build` and confirm no TypeScript errors
-- [ ] Bump version in `package.json`
+- [ ] Bump version in `package.json` **and `src/version.ts`** — they are hand-synced
+      and the value is rendered to users as a watermark in the tool
+- [ ] Add a `CHANGELOG.md` entry
 - [ ] Run `npm publish`
 - [ ] Verify on npm: https://www.npmjs.com/package/@liiift-studio/deploy-vercel-from-sanity
 - [ ] Update consuming studios with the new version
