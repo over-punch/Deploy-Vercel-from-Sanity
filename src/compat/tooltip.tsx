@@ -1,6 +1,6 @@
 // Hover/focus hint — Studio's Tooltip where available, an accessible local tooltip otherwise
 import { cloneElement, isValidElement, useId, useState } from 'react'
-import type { ComponentType, ReactElement, ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { UI, resolveComponent } from './resolve'
 import { Box, Card, Text } from './primitives'
 

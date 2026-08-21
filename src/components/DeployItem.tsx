@@ -1,5 +1,5 @@
 // Per-deploy-target card — shows status, build timer, history, cancel, deploy, copy URL, and error logs
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { ActionMenu, Badge, Box, Button, Card, Code, Flex, Spinner, Stack, Text, Tooltip, useToast } from '../compat'
 import {
@@ -34,10 +34,16 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const client = useClient({ apiVersion: '2025-01-01' })
 
 	/** Where status, cancel and log requests go — direct to Vercel, or via the proxy. */
-	const transport = pluginConfig.mode === 'proxy'
-		? { mode: 'proxy' as const, proxyUrl: pluginConfig.proxyUrl ?? '', statusKey: pluginConfig.statusKey }
-		: { mode: 'direct' as const, token }
-	const targetRef = { projectId, hookId, proxyKey: target.proxyKey, teamId: target.teamId }
+	const transport = useMemo(
+		() => pluginConfig.mode === 'proxy'
+			? { mode: 'proxy' as const, proxyUrl: pluginConfig.proxyUrl ?? '', statusKey: pluginConfig.statusKey }
+			: { mode: 'direct' as const, token },
+		[pluginConfig.mode, pluginConfig.proxyUrl, pluginConfig.statusKey, token],
+	)
+	const targetRef = useMemo(
+		() => ({ projectId, hookId, proxyKey: target.proxyKey, teamId: target.teamId }),
+		[projectId, hookId, target.proxyKey, target.teamId],
+	)
 
 	const [deployments, setDeployments]      = useState<VercelDeployment[]>([])
 	const [loadingInitial, setLoadingInitial] = useState(true)
@@ -79,8 +85,8 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		// Proxy targets deliberately have no hook URL and no token — requiring them
 		// here silently disabled polling, history, cancel and logs in proxy mode.
 		const ready = transport.mode === 'proxy'
-			? Boolean(target.proxyKey && pluginConfig.proxyUrl)
-			: Boolean(projectId && hookId && token)
+			? Boolean(targetRef.proxyKey && transport.proxyUrl)
+			: Boolean(targetRef.projectId && targetRef.hookId && transport.token)
 		if (!ready) return
 		const seq = ++requestSeqRef.current
 		try {
@@ -96,7 +102,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 			setPollError(err instanceof Error ? err.message : 'Could not reach the Vercel API')
 			console.error('Deploy-vercel-from-sanity: fetch error', err)
 		}
-	}, [projectId, hookId, token, target.teamId, target.proxyKey, transport.mode, pluginConfig.proxyUrl])
+	}, [transport, targetRef])
 
 	useEffect(() => {
 		fetchDeployments().finally(() => setLoadingInitial(false))
@@ -208,7 +214,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		} finally {
 			setCanceling(false)
 		}
-	}, [latest?.uid, token, target.teamId, fetchDeployments])
+	}, [latest?.uid, transport, targetRef, fetchDeployments])
 
 	const copyUrl = useCallback(() => {
 		if (!latest?.url) return
@@ -240,7 +246,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		} finally {
 			setLoadingLogs(false)
 		}
-	}, [latest?.uid, token, target.teamId])
+	}, [latest?.uid, transport, targetRef])
 
 	const toggleErrorLogs = useCallback(() => {
 		if (!showErrorLogs && errorLines.length === 0 && !logError) fetchErrorLogs()

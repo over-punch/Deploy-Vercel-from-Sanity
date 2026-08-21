@@ -366,10 +366,12 @@ See [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## Tests
+## Tests and CI
 
 ```bash
-npm test
+npm test        # unit tests
+npm run lint    # includes the compat-seam import rule
+npm run typecheck
 ```
 
 Unit tests cover the proxy's authorization boundary (fail-closed status key,

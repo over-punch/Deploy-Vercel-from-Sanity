@@ -1,0 +1,105 @@
+# The plugin claims one build spans Studio v3.30 through v6. This is what keeps that true.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx eslint .
+      - run: npm run build
+
+  matrix:
+    # Each leg installs a real dependency combination the plugin claims to support.
+    # The compat layer resolves @sanity/ui and @sanity/icons at runtime, so a
+    # typecheck against only the newest majors proves almost nothing — the paths
+    # that run on older Studios would never be compiled.
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Studio 3 · ui 2 · icons 2
+            sanity: "^3"
+            ui: "^2"
+            icons: "^2"
+            react: "^18"
+          - name: Studio 3 · ui 2 · icons 3
+            sanity: "^3"
+            ui: "^2"
+            icons: "^3"
+            react: "^18"
+          - name: Studio 5 · ui 3 · icons 3
+            sanity: "^5"
+            ui: "^3"
+            icons: "^3"
+            react: "^19"
+          - name: Studio 6 · ui 4 · icons 5
+            sanity: "^6"
+            ui: "^4"
+            icons: "^5"
+            react: "^19"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install this leg's Sanity versions
+        # --no-save keeps package.json untouched; --legacy-peer-deps because the
+        # older legs pair React 18 with packages whose peers name React 19.
+        run: |
+          npm install --no-save --legacy-peer-deps \
+            sanity@${{ matrix.sanity }} \
+            @sanity/ui@${{ matrix.ui }} \
+            @sanity/icons@${{ matrix.icons }} \
+            react@${{ matrix.react }} \
+            react-dom@${{ matrix.react }}
+
+      - name: Report what actually resolved
+        run: |
+          node -e "for (const m of ['sanity','@sanity/ui','@sanity/icons','react']) \
+            console.log(m.padEnd(16), require(m + '/package.json').version)"
+
+      - name: Typecheck against this combination
+        run: npm run typecheck
+
+      - name: Test against this combination
+        run: npm test
+
+      - name: Verify the seam resolved as expected
+        # A green typecheck does not prove the runtime branch is right — the
+        # declarations lie on both packages, which is the bug this plugin exists
+        # to work around.
+        run: |
+          node --input-type=module -e "
+            const ui = await import('@sanity/ui')
+            const icons = await import('@sanity/icons')
+            const usable = v => typeof v === 'function' || (typeof v === 'object' && v !== null)
+            const core = ['Box','Card','Flex','Text','Button','Badge','Spinner','Dialog','TextInput','Label','Stack']
+            const missing = core.filter(n => !usable(ui[n]))
+            if (missing.length) { console.error('Core primitives unresolved:', missing); process.exit(1) }
+            const named = usable(icons.RocketIcon)
+            const symbol = usable(icons.Icon)
+            if (!named && !symbol) { console.error('No icon path resolved'); process.exit(1) }
+            console.log('core primitives  ', core.length + '/' + core.length)
+            console.log('icon path        ', named ? 'named export' : '<Icon symbol>')
+            console.log('STACK_USES_GAP   ', typeof ui.Stack === 'function')
+            console.log('relocated present', ['useToast','Tooltip','Menu','Code'].filter(n => usable(ui[n])).length + '/4')
+          "

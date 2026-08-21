@@ -1,5 +1,5 @@
 // Monospace block — Studio's Code where available, a styled <code> block otherwise
-import type { CSSProperties, ComponentType, ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { UI, resolveComponent } from './resolve'
 
 /** The real Code when the installed @sanity/ui still exports it, otherwise undefined. */

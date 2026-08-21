@@ -21,9 +21,6 @@ const MissingIcon = forwardRef<SVGSVGElement, IconProps>(function MissingIcon(pr
 	return <svg {...GLYPH} xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" {...props} ref={ref} />
 })
 
-/** The v5+ `<Icon>` component, absent on icons v2, v3 and v4. */
-type SymbolIcon = ComponentType<IconProps & { symbol: string }>
-
 /**
  * The symbol map v5+ exposes alongside `Icon`. Used to check a symbol exists
  * before relying on it: `<Icon>` renders `null` for an unrecognised symbol, so

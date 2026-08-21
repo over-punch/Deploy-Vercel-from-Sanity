@@ -2,6 +2,34 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.3.2
+
+### Added
+
+- **CI** — a GitHub Actions matrix that installs four real dependency
+  combinations (Studio 3 with ui 2 and icons 2, Studio 3 with icons 3, Studio 5
+  with ui 3, Studio 6 with ui 4 and icons 5) and runs typecheck and tests against
+  each. Every previous release verified this by hand; the whole premise of the
+  package is that one build spans the range, and nothing was enforcing it.
+  Each leg also probes the seam at runtime, because a green typecheck proves
+  little here — the declarations lie on both packages, which is the bug this
+  plugin exists to work around.
+- **ESLint**, including a `no-restricted-imports` rule that bans `@sanity/ui` and
+  `@sanity/icons` imports outside the compat seam. Thirteen names bypassed the
+  seam in 1.1.x and would have stopped the Studio booting on the next major; this
+  turns that class of mistake into a build error instead of a review finding.
+- `lint` is now part of `prepublishOnly`, alongside typecheck, test and build.
+
+### Fixed
+
+Found by ESLint on its first run:
+
+- Four `useCallback` hooks declared dependencies that did not match what they
+  read — the fetch, cancel and log callbacks in `DeployItem` and the loader in
+  `DeployHistory` closed over stale `transport` and target values. Same class as
+  the proxy-key staleness fixed in 1.3.0, in three more places.
+- Three dead type declarations left over from splitting the resolution helpers.
+
 ## 1.3.1
 
 ### Added

@@ -1,5 +1,5 @@
 // Deployment history modal — shows last 10 deployments for a target
-import { useId, useEffect, useState, useCallback } from 'react'
+import { useId, useEffect, useMemo, useState, useCallback } from 'react'
 import { LaunchIcon, CloseIcon } from '../icons'
 import { fetchDeployments as transportFetch } from '../lib/transport'
 import { usePluginConfig } from '../config'
@@ -22,10 +22,16 @@ export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 
 	const { projectId, hookId } = parseHookUrl(target.url)
 	/** Where deployment reads go — direct to Vercel, or via the proxy. */
-	const transport = pluginConfig.mode === 'proxy'
-		? { mode: 'proxy' as const, proxyUrl: pluginConfig.proxyUrl ?? '', statusKey: pluginConfig.statusKey }
-		: { mode: 'direct' as const, token }
-	const targetRef = { projectId, hookId, proxyKey: target.proxyKey, teamId: target.teamId }
+	const transport = useMemo(
+		() => pluginConfig.mode === 'proxy'
+			? { mode: 'proxy' as const, proxyUrl: pluginConfig.proxyUrl ?? '', statusKey: pluginConfig.statusKey }
+			: { mode: 'direct' as const, token },
+		[pluginConfig.mode, pluginConfig.proxyUrl, pluginConfig.statusKey, token],
+	)
+	const targetRef = useMemo(
+		() => ({ projectId, hookId, proxyKey: target.proxyKey, teamId: target.teamId }),
+		[projectId, hookId, target.proxyKey, target.teamId],
+	)
 
 	const load = useCallback(async () => {
 		setLoading(true)
@@ -38,7 +44,7 @@ export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 		} finally {
 			setLoading(false)
 		}
-	}, [projectId, hookId, token, target.teamId])
+	}, [transport, targetRef])
 
 	useEffect(() => { load() }, [load])
 
