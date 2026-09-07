@@ -55,6 +55,11 @@ All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 - Owner, repo and workflow names are validated before being spliced into the
   request path, and branch names are checked against git's own rules, so a
   tampered value cannot redirect an authenticated request.
+- The reference workflow opens with a **branch allowlist**. The dispatch token is
+  public by design, and without a guard a leaked one could bump the production
+  branch and so force a deploy of whatever is currently on it — no attacker code,
+  but an outsider triggering a release. A `concurrency` group also serialises
+  bumps per branch.
 
 ## 1.3.2
 

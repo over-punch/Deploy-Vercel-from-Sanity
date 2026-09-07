@@ -1,15 +1,19 @@
 # Publishes an authorised version-bump commit so Vercel will build the branch.
 #
+# Copy this to .github/workflows/version-bump.yml in your SITE repository, then
+# change the git identity in the "Bump the patch version" step to the account
+# whose commits Vercel accepts.
+#
 # Why this exists: Vercel refuses to build a commit whose git author is not a
 # member of the Vercel team, and reports it as a BLOCKED deployment with no build
 # log. Re-firing the deploy hook cannot clear that - the hook rebuilds the same
-# HEAD. The only remedy is a new commit by an authorised author, and the Sanity
-# Studio has no git credential with which to make one. So the Deploy tool
-# dispatches this workflow instead, and the commit is made here.
+# HEAD. The only remedy is a new commit by an authorised author, and a Sanity
+# Studio running in a browser has no git credential with which to make one. So
+# the Deploy tool dispatches this workflow, and the commit is made here.
 #
 # Credential split, which is the point of the design:
 #   - the token in the Studio bundle is public and can only DISPATCH this workflow
-#   - LIIIFT_DEPLOY_TOKEN, which can actually write code, never leaves Actions
+#   - DEPLOY_COMMIT_TOKEN, which can actually write code, never leaves Actions
 name: Version bump
 
 on:
@@ -20,7 +24,7 @@ on:
                 required: false
                 default: 'a Studio user'
 
-# Read-only: the push below authenticates with LIIIFT_DEPLOY_TOKEN, not with
+# Read-only: the push below authenticates with DEPLOY_COMMIT_TOKEN, not with
 # GITHUB_TOKEN. A commit authored by github-actions[bot] would be blocked by
 # Vercel for exactly the same reason as the commit we are recovering from.
 permissions:
@@ -38,12 +42,29 @@ jobs:
         runs-on: ubuntu-latest
         name: Bump version and push
         steps:
-            - name: Verify the deploy token is present
+            # Optional hardening. The token that dispatches this workflow ships in a
+            # public Studio bundle, so treat "who can run this" as "anyone who finds
+            # the Studio". Without a guard, a leaked dispatch token can bump any
+            # branch - including the production one, forcing a deploy of whatever is
+            # currently on it. Narrow this list to the branches you actually deploy.
+            - name: Refuse branches this workflow is not meant to touch
               env:
-                  DEPLOY_TOKEN: ${{ secrets.LIIIFT_DEPLOY_TOKEN }}
+                  TARGET_REF: ${{ github.ref_name }}
+              run: |
+                  case "$TARGET_REF" in
+                      main|staging) ;;
+                      *)
+                          echo "::error::Refusing to bump '$TARGET_REF'. Add it to the allowlist in version-bump.yml if this is intended."
+                          exit 1
+                          ;;
+                  esac
+
+            - name: Verify the commit token is present
+              env:
+                  DEPLOY_TOKEN: ${{ secrets.DEPLOY_COMMIT_TOKEN }}
               run: |
                   if [ -z "$DEPLOY_TOKEN" ]; then
-                      echo "::error::LIIIFT_DEPLOY_TOKEN is not set. Add a Liiift-account token with Contents: write to this repository's Actions secrets."
+                      echo "::error::DEPLOY_COMMIT_TOKEN is not set. Add a token with Contents: write on this repository to its Actions secrets."
                       exit 1
                   fi
 
@@ -51,17 +72,17 @@ jobs:
               uses: actions/checkout@v4
               with:
                   ref: ${{ github.ref_name }}
-                  # Persisted so the push below carries the Liiift identity. With the
-                  # default GITHUB_TOKEN the commit would be attributed to a bot and
-                  # Vercel would block it again.
-                  token: ${{ secrets.LIIIFT_DEPLOY_TOKEN }}
+                  # Persisted so the push below carries the authorised identity. With
+                  # the default GITHUB_TOKEN the commit would be attributed to a bot
+                  # and Vercel would block it again.
+                  token: ${{ secrets.DEPLOY_COMMIT_TOKEN }}
 
             - name: Set up Node
               uses: actions/setup-node@v4
               with:
                   node-version: '24'
 
-            - name: Bump the patch version as Liiift
+            - name: Bump the patch version
               env:
                   # Every value below is passed through the environment rather than
                   # interpolated into the script. `requested_by` arrives from a browser
@@ -78,10 +99,11 @@ jobs:
                   SAFE_REQUESTER=$(printf '%s' "$REQUESTED_BY" | tr -cd '[:alnum:] ._@-' | cut -c1-60)
                   [ -n "$SAFE_REQUESTER" ] || SAFE_REQUESTER='a Studio user'
 
-                  # The identity Vercel checks. The email is what GitHub attributes by,
-                  # so it, not the name, is what actually unblocks the build.
-                  git config user.name  'Liiift'
-                  git config user.email 'hello@liiift.studio'
+                  # CHANGE THESE to the identity Vercel accepts. The email is what
+                  # GitHub attributes a commit by, so it, not the name, is what
+                  # actually unblocks the build.
+                  git config user.name  'Deploy Bot'
+                  git config user.email 'deploy-bot@example.com'
 
                   npm version patch --no-git-tag-version
                   VERSION=$(node -p "require('./package.json').version")

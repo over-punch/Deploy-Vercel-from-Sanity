@@ -302,10 +302,10 @@ This is the part worth understanding before enabling it.
 Studio bundle  ──  unblock.token   Actions: write, one repo
                         │          public — anyone who can open the Studio can read it
                         ▼
-GitHub Actions ──  LIIIFT_DEPLOY_TOKEN   Contents: write
+GitHub Actions ──  DEPLOY_COMMIT_TOKEN   Contents: write
                         │                never leaves GitHub
                         ▼
-                   commit as Liiift  ──▶  Vercel builds it
+              commit as an authorised author  ──▶  Vercel builds it
 ```
 
 Handing the Studio a `Contents: write` token would be far simpler and is the
@@ -315,12 +315,28 @@ repository — and the next build would run them. The dispatch token is scoped s
 that the worst a leak permits is *running the bump workflow*, which produces a
 version bump and a deploy.
 
-That is a nuisance if abused, not a compromise. Rotate the token if it leaks.
+### What a leaked dispatch token can actually do
+
+Be clear-eyed about this rather than filing it under "public by design":
+
+- It **cannot** read your code, read other secrets, or push commits.
+- It **can** run the bump workflow repeatedly — churning version commits and
+  burning Vercel build minutes.
+- It **can**, without the branch allowlist, bump your *production* branch and so
+  force a deploy of whatever is currently on it. No attacker code is introduced —
+  it deploys already-merged commits — but an outsider should not be able to
+  trigger a production release.
+
+The shipped workflow therefore opens with a branch allowlist, and a `concurrency`
+group that serialises bumps per branch. Narrow the allowlist to the branches you
+actually deploy. Rotate the token if it leaks.
 
 ### 1. Add the workflow
 
 Copy [`docs/version-bump.yml`](docs/version-bump.yml) to
-`.github/workflows/version-bump.yml` in the **site** repository.
+`.github/workflows/version-bump.yml` in the **site** repository, then set the git
+identity in it to the account whose commits Vercel accepts, and narrow the branch
+allowlist to the branches you deploy.
 
 > **The workflow file must exist on the repository's default branch**, and on
 > every branch you deploy from. GitHub resolves a dispatch against the default
@@ -332,7 +348,7 @@ Copy [`docs/version-bump.yml`](docs/version-bump.yml) to
 
 Create a fine-grained token on the account whose commits Vercel accepts, scoped
 to **`Contents: write`** on that one repository, and save it as the repository
-Actions secret **`LIIIFT_DEPLOY_TOKEN`**.
+Actions secret **`DEPLOY_COMMIT_TOKEN`**.
 
 It must not be the default `GITHUB_TOKEN`: commits made with it are authored by
 `github-actions[bot]`, which is not a team member either, so Vercel would block
@@ -363,7 +379,7 @@ vercelDeploy({
 | Field | Required | Description |
 |---|---|---|
 | `token` | yes | Fine-grained token, `Actions: write` on `repo` only. Ships in the Studio bundle — treat it as public. Unset hides the button. |
-| `owner` | yes | Repository owner, e.g. `Liiift-Studio` |
+| `owner` | yes | Repository owner, e.g. `your-org` |
 | `repo` | yes | Repository name |
 | `workflow` | no | Workflow filename. Defaults to `version-bump.yml`. |
 | `defaultRef` | no | Branch to bump when the blocked deployment names none. Normally unnecessary — the branch is read from the deployment being recovered. |
