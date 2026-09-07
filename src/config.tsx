@@ -1,13 +1,15 @@
 // Resolved plugin configuration, shared with the tool's component tree
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import type { VercelDeployMode, VercelDeployPluginConfig } from './types'
+import type { UnblockConfig, VercelDeployMode, VercelDeployPluginConfig } from './types'
 
 /** Plugin config with defaults applied, as the components consume it. */
 export interface ResolvedConfig {
 	mode: VercelDeployMode
 	proxyUrl?: string
 	statusKey?: string
+	/** Present only when deploy recovery is both configured and given a token. */
+	unblock?: UnblockConfig
 }
 
 const DEFAULTS: ResolvedConfig = { mode: 'direct' }
@@ -26,6 +28,11 @@ export function resolveConfig(options: VercelDeployPluginConfig | void): Resolve
 		// Trailing slashes would double up when request paths are appended.
 		proxyUrl: config.proxyUrl?.replace(/\/+$/, ''),
 		statusKey: config.statusKey,
+		// Dropped unless it can actually be used. A config missing the token, the owner
+		// or the repo would otherwise render a button whose only outcome is an error.
+		unblock: config.unblock?.token && config.unblock.owner && config.unblock.repo
+			? config.unblock
+			: undefined,
 	}
 }
 

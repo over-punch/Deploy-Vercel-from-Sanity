@@ -10,6 +10,7 @@ export { vercelDeploySchema } from './schema/vercelDeploy'
 export type {
 	VercelDeployPluginConfig,
 	VercelDeployMode,
+	UnblockConfig,
 	DeployTarget,
 	VercelDeployment,
 	VercelDeployState,

@@ -2,6 +2,60 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.4.0
+
+### Added
+
+- **`BLOCKED` is now a recognised deployment state.** Vercel refuses to build a
+  commit whose git author is not a member of the team that owns the project, and
+  reports that as `BLOCKED`. The state was absent from the union, so `stateLabel`
+  fell through to its default and every such deployment rendered as **Unknown**
+  with a neutral tone. Editors saw a deploy that simply never arrived, with no
+  badge, no log and nothing to act on — the failure was invisible at exactly the
+  moment it needed explaining. It now reads **Blocked**, in a critical tone.
+
+- **A recovery path for author-blocked deploys**, behind the new opt-in `unblock`
+  config. When the latest deployment is `BLOCKED`, the card explains what
+  happened — naming the git author Vercel objected to — and offers a
+  **Bump version and redeploy** button.
+
+  Re-firing the deploy hook cannot clear this state: the hook rebuilds the same
+  HEAD, so it is blocked identically. The only remedy is a new commit by an
+  authorised author, and a browser holds no git credential able to make one.
+  The button therefore dispatches a GitHub Actions workflow, and the commit is
+  made there.
+
+  The credential split is the point of the design:
+
+  - `unblock.token` is compiled into the Studio bundle and must be treated as
+    public. Scope it to **`Actions: write` on the one repository**, so the worst a
+    leak permits is running that workflow.
+  - the token that can actually write code lives in the repository's Actions
+    secrets and never reaches the browser.
+
+  Giving the Studio a `Contents: write` token instead would be far simpler and
+  would let anyone who can load the Studio push arbitrary commits to the
+  production repository. That is why the indirection exists.
+
+  `resolveConfig` drops an `unblock` block that lacks a token, owner or repo, so
+  an incomplete configuration renders no button rather than one that only ever
+  errors. Omitting `unblock` entirely leaves the feature off and requires no
+  GitHub token at all.
+
+- `githubCommitAuthorLogin` on deployment metadata. This — not `creator` — is
+  what Vercel checks when deciding whether to build, so it is the value the
+  blocked-state banner names.
+
+### Notes
+
+- The dispatch reports only that GitHub **accepted** the request. The workflow
+  still has to run, commit and push before Vercel sees anything, so the UI says
+  the deploy will appear shortly rather than claiming it is already under way.
+  Polling picks up the real deployment when it arrives.
+- Owner, repo and workflow names are validated before being spliced into the
+  request path, and branch names are checked against git's own rules, so a
+  tampered value cannot redirect an authenticated request.
+
 ## 1.3.2
 
 ### Added

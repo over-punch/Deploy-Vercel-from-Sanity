@@ -1,0 +1,95 @@
+# Publishes an authorised version-bump commit so Vercel will build the branch.
+#
+# Why this exists: Vercel refuses to build a commit whose git author is not a
+# member of the Vercel team, and reports it as a BLOCKED deployment with no build
+# log. Re-firing the deploy hook cannot clear that - the hook rebuilds the same
+# HEAD. The only remedy is a new commit by an authorised author, and the Sanity
+# Studio has no git credential with which to make one. So the Deploy tool
+# dispatches this workflow instead, and the commit is made here.
+#
+# Credential split, which is the point of the design:
+#   - the token in the Studio bundle is public and can only DISPATCH this workflow
+#   - LIIIFT_DEPLOY_TOKEN, which can actually write code, never leaves Actions
+name: Version bump
+
+on:
+    workflow_dispatch:
+        inputs:
+            requested_by:
+                description: 'Who asked for the bump (recorded in the commit message)'
+                required: false
+                default: 'a Studio user'
+
+# Read-only: the push below authenticates with LIIIFT_DEPLOY_TOKEN, not with
+# GITHUB_TOKEN. A commit authored by github-actions[bot] would be blocked by
+# Vercel for exactly the same reason as the commit we are recovering from.
+permissions:
+    contents: read
+
+# Two bumps racing on one branch would produce a non-fast-forward push and a
+# failed run. Queue them per branch instead. Not cancel-in-progress: a bump that
+# has already pushed must not be interrupted mid-way.
+concurrency:
+    group: version-bump-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    bump:
+        runs-on: ubuntu-latest
+        name: Bump version and push
+        steps:
+            - name: Verify the deploy token is present
+              env:
+                  DEPLOY_TOKEN: ${{ secrets.LIIIFT_DEPLOY_TOKEN }}
+              run: |
+                  if [ -z "$DEPLOY_TOKEN" ]; then
+                      echo "::error::LIIIFT_DEPLOY_TOKEN is not set. Add a Liiift-account token with Contents: write to this repository's Actions secrets."
+                      exit 1
+                  fi
+
+            - name: Check out the requested branch
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.ref_name }}
+                  # Persisted so the push below carries the Liiift identity. With the
+                  # default GITHUB_TOKEN the commit would be attributed to a bot and
+                  # Vercel would block it again.
+                  token: ${{ secrets.LIIIFT_DEPLOY_TOKEN }}
+
+            - name: Set up Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+
+            - name: Bump the patch version as Liiift
+              env:
+                  # Every value below is passed through the environment rather than
+                  # interpolated into the script. `requested_by` arrives from a browser
+                  # via a token that ships in a public bundle, so treating it as trusted
+                  # shell text would be a command-injection hole. `ref_name` is git-
+                  # validated but is handled the same way for consistency.
+                  REQUESTED_BY: ${{ inputs.requested_by }}
+                  TARGET_REF: ${{ github.ref_name }}
+              run: |
+                  set -euo pipefail
+
+                  # Reduce the attribution to a harmless label before it reaches the
+                  # commit message. Anything outside this set is dropped, not escaped.
+                  SAFE_REQUESTER=$(printf '%s' "$REQUESTED_BY" | tr -cd '[:alnum:] ._@-' | cut -c1-60)
+                  [ -n "$SAFE_REQUESTER" ] || SAFE_REQUESTER='a Studio user'
+
+                  # The identity Vercel checks. The email is what GitHub attributes by,
+                  # so it, not the name, is what actually unblocks the build.
+                  git config user.name  'Liiift'
+                  git config user.email 'hello@liiift.studio'
+
+                  npm version patch --no-git-tag-version
+                  VERSION=$(node -p "require('./package.json').version")
+
+                  git add package.json package-lock.json
+                  git commit -m "v${VERSION}" \
+                             -m "Version bump to unblock deployment, requested by ${SAFE_REQUESTER} from the Sanity Studio."
+
+                  git push origin "HEAD:${TARGET_REF}"
+
+                  echo "Pushed v${VERSION} to ${TARGET_REF}" >> "$GITHUB_STEP_SUMMARY"

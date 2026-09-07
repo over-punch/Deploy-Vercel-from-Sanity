@@ -4,12 +4,13 @@ import { flushSync } from 'react-dom'
 import { ActionMenu, Badge, Box, Button, Card, Code, Flex, Spinner, Stack, Text, Tooltip, useToast } from '../compat'
 import {
 	ClockIcon, TrashIcon, EllipsisVerticalIcon, LaunchIcon,
-	CopyIcon, CheckmarkIcon, WarningOutlineIcon, ChevronDownIcon, ChevronUpIcon, EditIcon,
+	CopyIcon, CheckmarkIcon, WarningOutlineIcon, ChevronDownIcon, ChevronUpIcon, EditIcon, RocketIcon,
 } from '../icons'
 import { triggerDeploy } from '../lib/api'
 import { fetchDeployments as transportFetch, cancelDeploy, fetchDeploymentEvents } from '../lib/transport'
+import { dispatchVersionBump } from '../lib/github'
 import { usePluginConfig } from '../config'
-import { useClient } from 'sanity'
+import { useClient, useCurrentUser } from 'sanity'
 import { parseHookUrl, isActiveState, formatDuration, timeAgo, shortSha, safeHref, projectHref, githubCommitHref, deploymentHref } from '../lib/helpers'
 import { StatusBadge } from './StatusBadge'
 import { DeployHistory } from './DeployHistory'
@@ -32,6 +33,8 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const toast = useToast()
 	const pluginConfig = usePluginConfig()
 	const client = useClient({ apiVersion: '2025-01-01' })
+	// Recorded in the bump commit message so the repo history says who asked for it.
+	const currentUser = useCurrentUser()
 
 	/** Where status, cancel and log requests go — direct to Vercel, or via the proxy. */
 	const transport = useMemo(
@@ -59,6 +62,9 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const [loadingLogs, setLoadingLogs]      = useState(false)
 	const [logError, setLogError]            = useState<string | null>(null)
 	const [pollError, setPollError]          = useState<string | null>(null)
+	const [bumping, setBumping]              = useState(false)
+	/** Outcome of the last bump dispatch — success is reported inline, since the build it starts is minutes away. */
+	const [bumpResult, setBumpResult]        = useState<{ ok: boolean; message: string } | null>(null)
 
 	/** uid of the deployment that was latest when Deploy was clicked — lets us tell the optimistic state apart from a genuinely new deployment */
 	const triggeredFromUidRef = useRef<string | undefined>(undefined)
@@ -253,6 +259,45 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		setShowErrorLogs(v => !v)
 	}, [showErrorLogs, errorLines.length, logError, fetchErrorLogs])
 
+	// ── Deploy recovery (author-blocked builds) ───────────────────────────────
+	// Vercel refused this commit because its git author is not on the team. Firing
+	// the deploy hook again rebuilds the same HEAD and is blocked identically, so
+	// the only way forward is a fresh commit by an authorised author. The Studio
+	// cannot make one — a GitHub Actions workflow does it, and this dispatches it.
+	const requestBump = useCallback(async () => {
+		const unblockConfig = pluginConfig.unblock
+		const ref = latest?.meta?.githubCommitRef ?? unblockConfig?.defaultRef
+		if (!unblockConfig || !ref) return
+		setBumping(true)
+		setBumpResult(null)
+		try {
+			await dispatchVersionBump({
+				config: unblockConfig,
+				ref,
+				requestedBy: currentUser?.name || currentUser?.email || undefined,
+			})
+			// Deliberately not an optimistic "deploying" state. GitHub has only accepted
+			// the dispatch; the workflow still has to run, commit and push before Vercel
+			// sees anything, so claiming a deploy is under way here would be a lie for
+			// the next minute or two. Polling picks the real deployment up on its own.
+			setBumpResult({
+				ok: true,
+				message: `Version bump requested on ${ref}. The new deploy appears here in a minute or two.`,
+			})
+			toast.push({
+				status: 'success',
+				title: 'Version bump requested',
+				description: `${target.name} will redeploy once the bump commit lands on ${ref}.`,
+			})
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'The version bump could not be started.'
+			setBumpResult({ ok: false, message })
+			toast.push({ status: 'error', title: 'Could not request a version bump', description: message })
+		} finally {
+			setBumping(false)
+		}
+	}, [pluginConfig.unblock, latest?.meta?.githubCommitRef, currentUser, target.name, toast])
+
 	// ── Derived display values ────────────────────────────────────────────────
 	const branch           = latest?.meta?.githubCommitRef
 	const commitMsg        = latest?.meta?.githubCommitMessage?.split('\n')[0]
@@ -263,6 +308,13 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const deployedAt       = latest?.created ? timeAgo(latest.created) : null
 	const vercelProjectUrl = projectHref(latest?.inspectorUrl)
 	const isError          = latest?.state === 'ERROR'
+	const isBlocked        = latest?.state === 'BLOCKED'
+	/** The git identity Vercel objected to — the useful thing to name in the banner. */
+	const blockedAuthor    = latest?.meta?.githubCommitAuthorLogin ?? latest?.meta?.githubCommitAuthorName
+	/** Branch the bump would land on. Absent only if the deployment carries no git metadata at all. */
+	const bumpRef          = branch ?? pluginConfig.unblock?.defaultRef
+	/** Recovery is offered only where it can actually work: blocked, configured, and with a branch to target. */
+	const canUnblock       = Boolean(isBlocked && pluginConfig.unblock && bumpRef)
 
 	return (
 		<>
@@ -523,6 +575,67 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 											</Card>
 										)}
 									</Flex>
+
+									{/* ── Author-blocked build ────────────────────────────
+									    Given its own full-width card rather than a badge: the
+									    Deploy button is useless against this state, and an
+									    editor pressing it repeatedly is the exact behaviour
+									    this is here to stop. */}
+									{isBlocked && (
+										<Card tone="critical" padding={3} radius={2}>
+											<Stack space={3}>
+												<Flex align="flex-start" gap={2}>
+													<Box style={{ flexShrink: 0, marginTop: 2 }}>
+														<WarningOutlineIcon aria-hidden="true" />
+													</Box>
+													<Stack space={2}>
+														<Text size={1} weight="semibold">Vercel refused to build this commit</Text>
+														<Text size={1}>
+															{blockedAuthor
+																? <>The last commit was authored by <strong>{blockedAuthor}</strong>, who is not a member of the Vercel team, so the build never started.</>
+																: <>The last commit&apos;s author is not a member of the Vercel team, so the build never started.</>}
+															{' '}Deploying again will not help — it rebuilds the same commit.
+														</Text>
+													</Stack>
+												</Flex>
+
+												{canUnblock ? (
+													<Stack space={2}>
+														<Button
+															text={bumping ? 'Requesting…' : 'Bump version and redeploy'}
+															tone="critical"
+															icon={RocketIcon}
+															fontSize={1}
+															loading={bumping}
+															// Re-dispatching after success would stack a second bump commit for
+															// no benefit, so the button retires once it has done its job.
+															disabled={bumping || bumpResult?.ok === true}
+															onClick={requestBump}
+															style={{ alignSelf: 'flex-start', cursor: 'pointer' }}
+														/>
+														<Text size={0} muted>
+															Adds an authorised version-bump commit on <code>{bumpRef}</code>, which Vercel will build.
+														</Text>
+													</Stack>
+												) : (
+													<Text size={0} muted>
+														{pluginConfig.unblock
+															? 'This deployment carries no branch information, so a version bump cannot be targeted. Ask a developer to deploy manually.'
+															: 'Ask a developer to push a version bump — a commit by an authorised author is needed before this site can deploy.'}
+													</Text>
+												)}
+
+												{/* Reported inline and kept: the dispatch resolves long before the
+												    deployment appears, so a toast alone would vanish while the user
+												    is still waiting and looking for confirmation. */}
+												{bumpResult && (
+													<Text size={0} weight={bumpResult.ok ? 'semibold' : undefined}>
+														{bumpResult.ok ? '✓ ' : ''}{bumpResult.message}
+													</Text>
+												)}
+											</Stack>
+										</Card>
+									)}
 								</Stack>
 							)}
 

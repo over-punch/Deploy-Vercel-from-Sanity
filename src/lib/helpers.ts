@@ -97,6 +97,10 @@ export function stateLabel(state: VercelDeployState | undefined): {
 		case 'QUEUED':       return { label: 'Queued',       tone: 'caution' }
 		case 'INITIALIZING': return { label: 'Initializing', tone: 'caution' }
 		case 'ERROR':        return { label: 'Error',        tone: 'critical' }
+		// Distinct from Error: nothing was built, so there is no log to read and a
+		// retry changes nothing. Labelling it 'Unknown' is what made this failure
+		// invisible to editors, who saw a deploy that simply never arrived.
+		case 'BLOCKED':      return { label: 'Blocked',      tone: 'critical' }
 		case 'CANCELED':     return { label: 'Canceled',     tone: 'default' }
 		case 'LOADING':      return { label: 'Loading…',     tone: 'default' }
 		default:             return { label: 'Unknown',      tone: 'default' }

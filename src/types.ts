@@ -7,6 +7,13 @@ export type VercelDeployState =
 	| 'READY'
 	| 'ERROR'
 	| 'CANCELED'
+	/**
+	 * Vercel refused to build the commit because its git author is not a member of
+	 * the team that owns the project. Nothing was compiled, so there are no build
+	 * logs to read — the fix is a new commit by an authorised author, not a retry.
+	 * Re-firing the deploy hook cannot clear it: the hook rebuilds the same HEAD.
+	 */
+	| 'BLOCKED'
 	| 'LOADING' // internal — before first API response
 
 /** A vercel_deploy document stored in the Sanity dataset */
@@ -55,6 +62,12 @@ export interface VercelDeployment {
 		githubCommitRef?: string
 		githubCommitSha?: string
 		githubCommitAuthorName?: string
+		/**
+		 * GitHub login of the commit author. This — not `creator` — is what Vercel
+		 * checks when deciding whether to build, so it is the value to name when a
+		 * deployment comes back BLOCKED.
+		 */
+		githubCommitAuthorLogin?: string
 		/** GitHub repo in "org/repo" format — used to construct commit links */
 		githubRepo?: string
 		/** GitHub org slug — fallback when githubRepo is absent */
@@ -91,6 +104,51 @@ export interface VercelConfig {
  */
 export type VercelDeployMode = 'direct' | 'proxy'
 
+/**
+ * Opt-in recovery path for deployments Vercel refuses to build because the HEAD
+ * commit's git author is not a member of the Vercel team.
+ *
+ * The Studio cannot fix this itself — the remedy is a commit by an authorised
+ * author, and a browser holds no git credential. So the button dispatches a
+ * GitHub Actions workflow, and that workflow does the commit with a token held
+ * in Actions secrets.
+ *
+ * The split matters. {@link token} ships inside the Studio bundle and must be
+ * treated as public; scope it to **Actions: write on the one repo** so the worst
+ * a leak permits is running that workflow. The credential that can actually
+ * write code stays in GitHub, where the browser never sees it.
+ */
+export interface UnblockConfig {
+	/**
+	 * Fine-grained GitHub token, scoped to `Actions: write` on {@link repo} alone.
+	 *
+	 * Compiled into the Studio bundle, so anyone who can load the Studio can read
+	 * it and dispatch the workflow. Never give it `Contents: write` — that would
+	 * let a reader push arbitrary commits to the production repo.
+	 *
+	 * Leave unset to hide the button entirely.
+	 */
+	token?: string
+	/** Repository owner, e.g. `Liiift-Studio`. */
+	owner: string
+	/** Repository name, e.g. `the-designers-foundry`. */
+	repo: string
+	/**
+	 * Workflow filename to dispatch. Defaults to `version-bump.yml`.
+	 *
+	 * GitHub resolves a dispatch against the workflow file **on the repository's
+	 * default branch**, then runs the copy on the requested ref — so the file must
+	 * exist on the default branch as well as on every branch you deploy from, or
+	 * the dispatch returns 404.
+	 */
+	workflow?: string
+	/**
+	 * Branch to bump when the blocked deployment does not name one. Normally
+	 * unnecessary: the branch is read from the deployment being unblocked.
+	 */
+	defaultRef?: string
+}
+
 /** Plugin configuration options */
 export interface VercelDeployPluginConfig {
 	/** Tool name slug shown in Studio sidebar (default: 'vercel-deploy') */
@@ -119,6 +177,12 @@ export interface VercelDeployPluginConfig {
 	 * API token never leaves the proxy.
 	 */
 	statusKey?: string
+	/**
+	 * Enables the "Bump version" recovery button on deployments Vercel blocked for
+	 * git-author reasons. Omit to leave the feature off — the button never renders
+	 * and no GitHub token is required.
+	 */
+	unblock?: UnblockConfig
 }
 
 /** A deploy request document, created by the Studio and consumed by the proxy. */

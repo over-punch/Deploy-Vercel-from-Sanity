@@ -149,6 +149,7 @@ A target needs **either** `url` **or** `proxyKey`; the schema enforces that.
 | `mode` | `'direct' \| 'proxy'` | `'direct'` | Transport used to reach Vercel — see [Two modes](#two-modes) |
 | `proxyUrl` | `string` | — | Base URL of the deploy proxy, no trailing slash. Required when `mode` is `'proxy'`. |
 | `statusKey` | `string` | — | Key sent with status requests. Must match the proxy's `VERCEL_DEPLOY_STATUS_KEY`. Ships in the Studio bundle — treat it as public. |
+| `unblock` | `UnblockConfig` | — | Enables recovery from author-blocked deploys — see [Recovering a blocked deploy](#recovering-a-blocked-deploy). Omit to leave the feature off. |
 
 ---
 
@@ -271,6 +272,121 @@ can cancel a running build for the configured targets — see
 6. A Studio toast notification fires when a deployment completes (Ready, Error, or Canceled).
 
 > **Polling and rate limits** — Active deployments are polled every 5 seconds per target. With many simultaneous active deploys, API call volume adds up. Vercel's rate limit is generous for normal use, but studios with a large number of targets triggering concurrently may hit `429` errors. The plugin surfaces these with a clear message.
+
+---
+
+## Recovering a blocked deploy
+
+Vercel will not build a commit whose **git author is not a member of the team
+that owns the project**. It creates the deployment, marks it `BLOCKED`, and
+compiles nothing. There is no build log, because there was no build.
+
+This is easy to miss. The deployment appears in the history like any other, and
+before 1.4.0 the state was not in the plugin's union at all, so it rendered as
+*Unknown* — an editor pressed **Deploy**, saw nothing go wrong, and waited for a
+site that was never going to update.
+
+**Pressing Deploy again cannot fix it.** The deploy hook rebuilds the current
+HEAD, which is the same commit with the same author, so it is blocked
+identically. The only way out is a new commit by an authorised author.
+
+A Studio running in a browser holds no git credential, so it cannot make that
+commit itself. With `unblock` configured it dispatches a GitHub Actions workflow
+that does.
+
+### The credential split
+
+This is the part worth understanding before enabling it.
+
+```
+Studio bundle  ──  unblock.token   Actions: write, one repo
+                        │          public — anyone who can open the Studio can read it
+                        ▼
+GitHub Actions ──  LIIIFT_DEPLOY_TOKEN   Contents: write
+                        │                never leaves GitHub
+                        ▼
+                   commit as Liiift  ──▶  Vercel builds it
+```
+
+Handing the Studio a `Contents: write` token would be far simpler and is the
+obvious first design. Do not: the Studio bundle is served publicly, so that token
+would let anyone who can load the Studio push arbitrary commits to the production
+repository — and the next build would run them. The dispatch token is scoped so
+that the worst a leak permits is *running the bump workflow*, which produces a
+version bump and a deploy.
+
+That is a nuisance if abused, not a compromise. Rotate the token if it leaks.
+
+### 1. Add the workflow
+
+Copy [`docs/version-bump.yml`](docs/version-bump.yml) to
+`.github/workflows/version-bump.yml` in the **site** repository.
+
+> **The workflow file must exist on the repository's default branch**, and on
+> every branch you deploy from. GitHub resolves a dispatch against the default
+> branch's copy, then runs the copy on the requested ref. A file present only on
+> `staging` returns a 404 — which the plugin reports in full, since GitHub uses
+> the same 404 for "no such workflow" and "your token cannot see this repo".
+
+### 2. Add the commit credential
+
+Create a fine-grained token on the account whose commits Vercel accepts, scoped
+to **`Contents: write`** on that one repository, and save it as the repository
+Actions secret **`LIIIFT_DEPLOY_TOKEN`**.
+
+It must not be the default `GITHUB_TOKEN`: commits made with it are authored by
+`github-actions[bot]`, which is not a team member either, so Vercel would block
+the bump for the same reason it blocked the original commit.
+
+### 3. Add the dispatch token
+
+Create a second fine-grained token scoped to **`Actions: write`** on the same
+repository — and nothing else — and expose it to the Studio build:
+
+```sh
+SANITY_STUDIO_DEPLOY_UNBLOCK_GH_TOKEN=github_pat_…
+```
+
+### 4. Configure the plugin
+
+```ts
+vercelDeploy({
+  unblock: {
+    token: process.env.SANITY_STUDIO_DEPLOY_UNBLOCK_GH_TOKEN,
+    owner: 'your-org',
+    repo: 'your-site-repo',
+    workflow: 'version-bump.yml',   // optional, this is the default
+  },
+})
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `token` | yes | Fine-grained token, `Actions: write` on `repo` only. Ships in the Studio bundle — treat it as public. Unset hides the button. |
+| `owner` | yes | Repository owner, e.g. `Liiift-Studio` |
+| `repo` | yes | Repository name |
+| `workflow` | no | Workflow filename. Defaults to `version-bump.yml`. |
+| `defaultRef` | no | Branch to bump when the blocked deployment names none. Normally unnecessary — the branch is read from the deployment being recovered. |
+
+An `unblock` block missing `token`, `owner` or `repo` is discarded, so a
+half-finished configuration renders no button rather than one that only errors.
+
+### What the editor sees
+
+The button appears only when the latest deployment is actually `BLOCKED`. It is
+not a general "deploy harder" control, and it is deliberately not offered when
+the plugin has nothing to target.
+
+Pressing it reports that the bump was **requested**. That is the honest claim:
+GitHub has accepted the dispatch, but the workflow still has to run, commit and
+push before Vercel sees anything, so the new deployment turns up a minute or two
+later. Polling picks it up on its own.
+
+### The real fix
+
+This is a recovery lever, not a cure. If the same author is blocked repeatedly,
+add their GitHub account to the Vercel team — that removes the failure entirely.
+Keep `unblock` for the cases you cannot prevent.
 
 ---
 
