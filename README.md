@@ -336,8 +336,11 @@ Requirements for the route:
   your site's domain, so every call is cross-origin and the preflight fails
   without an allow-list. Echo one allow-listed origin; do not send `*` to an
   endpoint that takes an `Authorization` header.
-- **Restrict which branches it will bump.** The recovery flow only ever needs the
-  branches you deploy.
+- **Restrict which branches it will bump**, and read that list from the
+  environment rather than hard-coding it. The recovery flow only ever needs the
+  branches you deploy, but the list has to change when you add a deploy target —
+  and a hard-coded list can only be changed by shipping a deploy, which is the
+  very thing that is broken when this route is needed.
 - **Answer `{ error }` on failure.** The plugin shows that string to the editor
   verbatim, in preference to its own generic message.
 - **Serve it over https.** The plugin refuses a plaintext endpoint, because the

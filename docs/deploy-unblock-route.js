@@ -18,11 +18,22 @@ const OWNER = 'your-org'
 const REPO = 'your-site-repo'
 
 /**
- * Branches this route will bump. Narrow by design — a signed-in Studio user of any
- * role can reach this, and bumping an arbitrary branch is not something the recovery
- * flow ever needs.
+ * Branches this route will bump, as a comma-separated env var.
+ *
+ * Narrow by design — a signed-in Studio user of any role can reach this, and
+ * bumping an arbitrary branch is not something the recovery flow ever needs.
+ *
+ * Read from the environment rather than hard-coded because the list has to change
+ * when a new deploy target is added, and a hard-coded list could only be changed by
+ * shipping a deploy — which is the very thing that is broken when this route is
+ * needed. An env var can be updated while deploys are blocked.
+ *
+ * Defaults to `main,staging`.
  */
-const ALLOWED_REFS = ['main', 'staging']
+const ALLOWED_REFS = (process.env.DEPLOY_UNBLOCK_BRANCHES ?? 'main,staging')
+	.split(',')
+	.map(ref => ref.trim())
+	.filter(Boolean)
 
 /**
  * Studio origins permitted to call this route. The Studio is served from
