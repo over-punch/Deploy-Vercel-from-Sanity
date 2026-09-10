@@ -184,7 +184,7 @@ async function assertDeploymentInProject(
 
 /** List recent deployments for a proxy key. */
 export async function handleDeployments(
-	params: { key: string | null; limit?: number; statusKey: string | null },
+	params: { key: string | null; limit?: number; statusKey: string | null; branch?: string | null },
 	env: ProxyEnv,
 ): Promise<ProxyResult> {
 	const denied = checkStatusKey(params.statusKey, env)
@@ -192,9 +192,20 @@ export async function handleDeployments(
 	const project = params.key ? env.projects[params.key.trim().toLowerCase()] : undefined
 	if (!project) return { status: 404, body: { error: 'Unknown target key' } }
 
+	// Branch names come from the caller, so they are held to git's own character set
+	// before being spliced into an authenticated query. Anything else is ignored
+	// rather than rejected, which degrades to the previous hook-only behaviour.
+	const branch = params.branch && /^[A-Za-z0-9._\-/]{1,255}$/.test(params.branch)
+		? params.branch
+		: undefined
+
 	const query = new URLSearchParams({
 		projectId: project.projectId,
-		'meta-deployHookId': project.hookId,
+		// Branch filtering reports what is actually live on that branch; hook filtering
+		// only ever shows deployments this tool triggered, so a git push never appears.
+		...(branch
+			? { 'meta-githubCommitRef': branch }
+			: { 'meta-deployHookId': project.hookId }),
 		limit: String(params.limit ?? 10),
 	})
 	if (project.teamId) query.set('teamId', project.teamId)

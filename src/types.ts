@@ -68,6 +68,12 @@ export interface VercelDeployment {
 		 * deployment comes back BLOCKED.
 		 */
 		githubCommitAuthorLogin?: string
+		/**
+		 * Branch the deploy hook is configured for. Present only on hook-triggered
+		 * deployments, and more reliable than githubCommitRef for learning which branch
+		 * a target follows, since it describes the hook rather than one commit.
+		 */
+		deployHookRef?: string
 		/** GitHub repo in "org/repo" format — used to construct commit links */
 		githubRepo?: string
 		/** GitHub org slug — fallback when githubRepo is absent */

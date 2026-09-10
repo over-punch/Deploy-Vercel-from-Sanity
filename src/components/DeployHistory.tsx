@@ -10,10 +10,16 @@ import { Badge, Box, Button, Card, Dialog, Flex, Spinner, Stack, Text } from '..
 interface DeployHistoryProps {
 	target: DeployTarget
 	token: string
+	/**
+	 * Branch to report on, passed down so history matches the card above it. Without
+	 * it the two disagree: the card shows what is live on the branch while history
+	 * shows only deployments this tool triggered.
+	 */
+	branch?: string
 	onClose: () => void
 }
 
-export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
+export function DeployHistory({ target, token, branch, onClose }: DeployHistoryProps) {
 	const dialogId = useId()
 	const pluginConfig = usePluginConfig()
 	const [deployments, setDeployments] = useState<VercelDeployment[]>([])
@@ -37,14 +43,14 @@ export function DeployHistory({ target, token, onClose }: DeployHistoryProps) {
 		setLoading(true)
 		setError(null)
 		try {
-			const data = await transportFetch(transport, targetRef, 20)
+			const data = await transportFetch(transport, targetRef, 20, branch)
 			setDeployments(data)
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Failed to load history')
 		} finally {
 			setLoading(false)
 		}
-	}, [transport, targetRef])
+	}, [transport, targetRef, branch])
 
 	useEffect(() => { load() }, [load])
 

@@ -87,7 +87,7 @@ async function handleGet(request: Request): Promise<Response> {
 	switch (operation(request)) {
 		case 'deployments': {
 			const limit = Number(url.searchParams.get('limit')) || undefined
-			return json(await handleDeployments({ key, limit, statusKey }, env), request)
+			return json(await handleDeployments({ key, limit, statusKey, branch: url.searchParams.get('branch') }, env), request)
 		}
 		case 'events':
 			return json(await handleEvents({ key, deploymentId: url.searchParams.get('deploymentId'), statusKey }, env), request)

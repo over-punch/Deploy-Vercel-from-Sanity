@@ -2,6 +2,45 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.6.0
+
+### Changed
+
+- **Cards now report what is live on the branch, not just deployments this tool
+  triggered.**
+
+  Deployments were fetched with `meta-deployHookId`, which returns only builds
+  started by that target's deploy hook. Every other deployment was invisible —
+  including the ordinary case of someone pushing to the branch. A card could
+  therefore sit for days showing a stale deployment while the site had moved on
+  several times. Observed on a live Studio: the Production card read
+  `1f911cf · 2d ago` while production was in fact serving a build from ten hours
+  earlier, two deployments later.
+
+  This also made the 1.5.0 recovery button appear broken. The bump lands as a
+  commit, so the deployment it produces is a git push and carries no
+  `deployHookId` — the card could not see it, and went on showing *"Vercel refused
+  to build this commit"* after the deploy had already succeeded. No amount of
+  polling helped, because every poll re-fetched the same filtered list.
+
+  Deployments are now filtered by `meta-githubCommitRef` once the branch is known.
+  The branch is learned from the first response — `deployHookRef` for preference,
+  since it describes the hook rather than one commit — and that first call still
+  filters by hook, so nothing is required on the target document.
+
+  History follows the card for the same reason, rather than the two disagreeing.
+
+- The proxy accepts an optional `branch` query parameter and applies the same
+  filter, validating it against git's character set first. A proxy that predates
+  this ignores the parameter and keeps the old behaviour, so Studio and proxy can
+  be upgraded independently.
+
+### Notes
+
+- Cards for two targets on the same branch will now show the same deployments.
+  That is intended: they describe one branch, and previously they disagreed only
+  because each saw a different subset of its history.
+
 ## 1.5.1
 
 ### Fixed

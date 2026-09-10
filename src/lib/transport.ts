@@ -46,6 +46,7 @@ export async function fetchDeployments(
 	transport: Transport,
 	target: TargetRef,
 	limit?: number,
+	branch?: string,
 ): Promise<VercelDeployment[]> {
 	if (transport.mode === 'direct') {
 		if (!target.projectId || !target.hookId) return []
@@ -55,10 +56,14 @@ export async function fetchDeployments(
 			token: transport.token,
 			teamId: target.teamId,
 			limit,
+			branch,
 		})
 	}
 	const params = new URLSearchParams({ key: target.proxyKey ?? '' })
 	if (limit) params.set('limit', String(limit))
+	// An older proxy simply ignores this and keeps hook filtering, which is the
+	// previous behaviour rather than an error.
+	if (branch) params.set('branch', branch)
 	const data = await proxyFetch<{ deployments: VercelDeployment[] }>(
 		`${transport.proxyUrl}/deployments?${params}`,
 		transport.statusKey,

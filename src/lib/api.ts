@@ -28,17 +28,36 @@ async function vercelFetch<T>(path: string, token: string, init?: RequestInit): 
 	return res.json() as Promise<T>
 }
 
-/** Fetch the last N deployments triggered by a specific deploy hook */
+/**
+ * Fetch the last N deployments for a target.
+ *
+ * Filtered by **branch** when one is known, and only by deploy hook otherwise.
+ *
+ * Hook-only filtering shows just the deployments this tool triggered, which makes
+ * the card a log of its own button presses rather than the state of the site: a
+ * branch deployed by a git push — how most deploys actually happen — never appears,
+ * so a card can sit for days showing a stale deployment while the site has moved on
+ * several times. Filtering by branch answers the question an editor is actually
+ * asking, which is what is live.
+ *
+ * The branch is not known on the very first call, since it is read off deployment
+ * metadata; that call falls back to the hook filter and teaches the caller the
+ * branch for subsequent ones.
+ */
 export async function listDeployments(opts: {
 	projectId: string
 	hookId: string
 	token: string
 	teamId?: string
 	limit?: number
+	/** Branch to report on. Falls back to hook filtering when absent. */
+	branch?: string
 }): Promise<VercelDeployment[]> {
 	const params = new URLSearchParams({
 		projectId: opts.projectId,
-		'meta-deployHookId': opts.hookId,
+		...(opts.branch
+			? { 'meta-githubCommitRef': opts.branch }
+			: { 'meta-deployHookId': opts.hookId }),
 		limit: String(opts.limit ?? 10),
 	})
 	if (opts.teamId) params.set('teamId', opts.teamId)

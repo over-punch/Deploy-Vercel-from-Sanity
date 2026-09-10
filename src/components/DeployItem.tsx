@@ -78,6 +78,14 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	 * polling for the gap.
 	 */
 	const [awaitingBump, setAwaitingBump]    = useState(false)
+	/**
+	 * Branch this target deploys, learned from the first response.
+	 *
+	 * Until it is known the fetch can only filter by deploy hook, which shows the
+	 * deployments this tool triggered rather than what is live. Once known, polling
+	 * switches to the branch and the card reports the real state of the site.
+	 */
+	const [knownBranch, setKnownBranch]      = useState<string | undefined>(undefined)
 	/** Outcome of the last bump dispatch — success is reported inline, since the build it starts is minutes away. */
 	const [bumpResult, setBumpResult]        = useState<{ ok: boolean; message: string } | null>(null)
 
@@ -113,11 +121,18 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		if (!ready) return
 		const seq = ++requestSeqRef.current
 		try {
-			const data = await transportFetch(transport, targetRef)
+			const data = await transportFetch(transport, targetRef, undefined, knownBranch)
 			// Drop the response if a newer request has since been issued, or the card unmounted.
 			if (seq !== requestSeqRef.current || !mountedRef.current) return
 			setDeployments(data)
 			setPollError(null)
+			// Learn the branch from whichever deployment came back, so the next poll can
+			// filter by it. deployHookRef is the more reliable of the two: it is the branch
+			// the hook is configured for, rather than the branch of one deployment.
+			if (!knownBranch) {
+				const learned = data[0]?.meta?.deployHookRef ?? data[0]?.meta?.githubCommitRef
+				if (learned) setKnownBranch(learned)
+			}
 		} catch (err) {
 			if (seq !== requestSeqRef.current || !mountedRef.current) return
 			// Surfaced in the card rather than only logged — the README documents rate-limit
@@ -125,7 +140,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 			setPollError(err instanceof Error ? err.message : 'Could not reach the Vercel API')
 			console.error('Deploy-vercel-from-sanity: fetch error', err)
 		}
-	}, [transport, targetRef])
+	}, [transport, targetRef, knownBranch])
 
 	useEffect(() => {
 		fetchDeployments().finally(() => setLoadingInitial(false))
@@ -811,6 +826,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 				<DeployHistory
 					target={target}
 					token={token}
+					branch={knownBranch}
 					onClose={() => setShowHistory(false)}
 				/>
 			)}
