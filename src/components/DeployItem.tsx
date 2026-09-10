@@ -20,6 +20,12 @@ const POLL_INTERVAL_MS = 5_000
 const LABEL_WIDTH      = 64
 /** Max time (ms) to hold the optimistic pending state before giving up and deferring to real API status */
 const PENDING_TIMEOUT_MS = 60_000
+/**
+ * Max time (ms) to keep polling for the deployment a bump should produce. Longer than
+ * PENDING_TIMEOUT_MS because a bump is not a direct trigger: the commit has to land,
+ * then Vercel has to notice the push, before any deployment exists to see.
+ */
+const BUMP_WATCH_TIMEOUT_MS = 300_000
 
 interface DeployItemProps {
 	target: DeployTarget
@@ -63,11 +69,22 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	const [logError, setLogError]            = useState<string | null>(null)
 	const [pollError, setPollError]          = useState<string | null>(null)
 	const [bumping, setBumping]              = useState(false)
+	/**
+	 * True from a successful bump until the deployment it causes shows up.
+	 *
+	 * BLOCKED is not an active state, so polling is off while the card shows it. The
+	 * bump then changes the world without anything watching, and the card sits frozen
+	 * on the blocked deployment until someone reloads the Studio. This restarts
+	 * polling for the gap.
+	 */
+	const [awaitingBump, setAwaitingBump]    = useState(false)
 	/** Outcome of the last bump dispatch — success is reported inline, since the build it starts is minutes away. */
 	const [bumpResult, setBumpResult]        = useState<{ ok: boolean; message: string } | null>(null)
 
 	/** uid of the deployment that was latest when Deploy was clicked — lets us tell the optimistic state apart from a genuinely new deployment */
 	const triggeredFromUidRef = useRef<string | undefined>(undefined)
+	/** Same idea for the bump: the blocked deployment's uid, so a genuinely new one is recognisable. */
+	const bumpedFromUidRef = useRef<string | undefined>(undefined)
 	/** Monotonic request id — a slower earlier poll must not overwrite a newer response. */
 	const requestSeqRef = useRef(0)
 	/** False once the card unmounts, so in-flight responses stop updating state. */
@@ -115,10 +132,25 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 	}, [fetchDeployments])
 
 	useEffect(() => {
-		if (!isActive) return
+		if (!isActive && !awaitingBump) return
 		const id = setInterval(fetchDeployments, POLL_INTERVAL_MS)
 		return () => clearInterval(id)
-	}, [isActive, fetchDeployments])
+	}, [isActive, awaitingBump, fetchDeployments])
+
+	// Stop watching once a deployment that is not the blocked one appears. From here
+	// the normal isActive polling carries it through to READY.
+	useEffect(() => {
+		if (!awaitingBump) return
+		if (latest?.uid && latest.uid !== bumpedFromUidRef.current) setAwaitingBump(false)
+	}, [awaitingBump, latest?.uid])
+
+	// Safety net — never poll forever if the bump commit lands but no deployment
+	// follows, or the branch is not one Vercel builds.
+	useEffect(() => {
+		if (!awaitingBump) return
+		const id = setTimeout(() => setAwaitingBump(false), BUMP_WATCH_TIMEOUT_MS)
+		return () => clearTimeout(id)
+	}, [awaitingBump])
 
 	// Hand off from the optimistic state only once the API returns a deployment
 	// that is not the one which was already latest when Deploy was clicked.
@@ -282,10 +314,13 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 				// failure. Unused by workflow-dispatch mode.
 				studioToken: (client.config() as { token?: string }).token,
 			})
-			// Deliberately not an optimistic "deploying" state. GitHub has only accepted
-			// the dispatch; the workflow still has to run, commit and push before Vercel
-			// sees anything, so claiming a deploy is under way here would be a lie for
-			// the next minute or two. Polling picks the real deployment up on its own.
+			// Deliberately not an optimistic "deploying" state — the commit still has to
+			// land and Vercel still has to notice it, so claiming a deploy is under way
+			// would be a lie for the next little while. But something must watch for it:
+			// BLOCKED is not an active state, so polling is otherwise off and the card
+			// would sit frozen on the blocked deployment until a manual reload.
+			bumpedFromUidRef.current = latest?.uid
+			setAwaitingBump(true)
 			setBumpResult({
 				ok: true,
 				message: `Version bump requested on ${ref}. The new deploy appears here in a minute or two.`,
@@ -302,7 +337,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		} finally {
 			setBumping(false)
 		}
-	}, [pluginConfig.unblock, latest?.meta?.githubCommitRef, currentUser, target.name, toast, client])
+	}, [pluginConfig.unblock, latest?.meta?.githubCommitRef, latest?.uid, currentUser, target.name, toast, client])
 
 	// ── Derived display values ────────────────────────────────────────────────
 	const branch           = latest?.meta?.githubCommitRef
@@ -635,9 +670,14 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 												    deployment appears, so a toast alone would vanish while the user
 												    is still waiting and looking for confirmation. */}
 												{bumpResult && (
-													<Text size={0} weight={bumpResult.ok ? 'semibold' : undefined}>
-														{bumpResult.ok ? '✓ ' : ''}{bumpResult.message}
-													</Text>
+													<Flex align="center" gap={2}>
+														{/* A spinner only while something is genuinely being waited on. Once the
+														    new deployment arrives the card takes over and this stops. */}
+														{awaitingBump && <Spinner muted />}
+														<Text size={0} weight={bumpResult.ok ? 'semibold' : undefined}>
+															{bumpResult.ok && !awaitingBump ? '✓ ' : ''}{bumpResult.message}
+														</Text>
+													</Flex>
 												)}
 											</Stack>
 										</Card>

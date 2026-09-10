@@ -2,6 +2,29 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.5.1
+
+### Fixed
+
+- **The card sat frozen after a successful bump.** `BLOCKED` is not an active
+  state, so the poll loop is off while the card is showing it. The bump then
+  changed the world with nothing watching: the commit landed, Vercel built it, and
+  the card went on showing the blocked deployment until someone reloaded the
+  Studio. Reported from a live TDF Studio, where the deploy plainly succeeded and
+  the UI never caught up.
+
+  This was a direct consequence of 1.5.0 deliberately *not* setting an optimistic
+  "deploying" state — correct on its own terms, since the commit still has to land
+  before any deployment exists, but it left nothing to restart polling.
+
+  A successful bump now watches for the deployment it causes: polling resumes,
+  stops as soon as a deployment other than the blocked one appears, and gives up
+  after five minutes so a bump that produces no build cannot poll forever. A
+  spinner sits beside the confirmation line while the wait is real.
+
+- `requestBump` read `latest?.uid` without declaring it — the same stale-closure
+  class 1.3.2 fixed in four hooks and 1.5.0 fixed in one more.
+
 ## 1.5.0
 
 ### Added
