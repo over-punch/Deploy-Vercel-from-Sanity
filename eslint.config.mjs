@@ -21,6 +21,20 @@ export default tseslint.config(
 		},
 	},
 	{
+		// Reference implementations copied into consumers' repos. Linted rather than
+		// ignored — a broken template is worse than no template — but they run on a
+		// Node server, so they need Node globals rather than the browser defaults.
+		files: ['docs/**/*.js'],
+		languageOptions: {
+			globals: {
+				fetch: 'readonly',
+				console: 'readonly',
+				process: 'readonly',
+				Buffer: 'readonly',
+			},
+		},
+	},
+	{
 		// The whole point of src/compat is that @sanity/ui and @sanity/icons are
 		// reached through one seam. Thirteen names bypassed it once and would have
 		// stopped the Studio booting on the next major; a rule prevents the class

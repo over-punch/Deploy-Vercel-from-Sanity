@@ -2,6 +2,57 @@
 
 All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
 
+## 1.5.0
+
+### Added
+
+- **`unblock.endpoint` — deploy recovery with no GitHub credential in the browser.**
+
+  1.4.0 shipped one way to recover a blocked deploy: the Studio dispatched a
+  GitHub Actions workflow, which meant a GitHub token in the Studio bundle. That
+  token was scoped as tightly as the mechanism allows (`Actions: write`, one repo)
+  but it is still a credential served publicly, and it obliged you to maintain two
+  tokens and keep a workflow file on the default branch.
+
+  If you have a server, you no longer need any of that:
+
+  ```ts
+  vercelDeploy({ unblock: { endpoint: 'https://example.com/api/deploy-unblock' } })
+  ```
+
+  The Studio posts the signed-in user's **Sanity session token** — a credential the
+  user already has, not one you issued — and your route verifies it and commits
+  with its own server-held GitHub token. One token, never public, no workflow file,
+  and no default-branch trap. A worked Next.js route is in
+  `docs/deploy-unblock-route.js`, self-contained so it can be copied as-is.
+
+  `endpoint` wins when both modes are configured. `token` mode is unchanged and
+  remains the answer for setups with nowhere to put a route.
+
+### Changed
+
+- `owner` and `repo` are now optional on `UnblockConfig`; they are required only
+  by workflow-dispatch mode. `resolveConfig` accepts a config that names either an
+  endpoint or a complete dispatch trio, and still discards anything less so a
+  half-finished setup renders no button.
+
+### Notes
+
+- The plugin refuses a plaintext `endpoint`, since the session token travels with
+  the request. `localhost` is exempt so the route can be developed against a dev
+  server.
+- Sanity exposes `client.config().token` only under token-based auth, so it can be
+  absent under cookie-based login. Rather than sending `Bearer undefined` and
+  letting the route report a permissions failure to someone who is in fact signed
+  in, the plugin detects the missing token and says so.
+- An endpoint's own `{ error }` message is shown to the editor in preference to the
+  plugin's generic one, so your route controls its own wording.
+
+### Fixed
+
+- The `requestBump` callback read `client` without declaring it, the same
+  stale-closure class 1.3.2 fixed in four other hooks.
+
 ## 1.4.0
 
 ### Added

@@ -1,4 +1,7 @@
 // Dispatches the version-bump workflow that unblocks an author-gated Vercel deploy
+//
+// This is the serverless fallback. Prefer `endpoint` mode in ../lib/unblock.ts,
+// which keeps the GitHub credential off the browser entirely.
 import type { UnblockConfig } from '../types'
 
 const GITHUB_API = 'https://api.github.com'
@@ -35,7 +38,12 @@ function isValidRef(ref: string): boolean {
 
 /** Everything {@link dispatchVersionBump} needs to identify and authorise the call. */
 export interface DispatchOptions {
-	config: UnblockConfig
+	/**
+	 * `owner` and `repo` are optional on {@link UnblockConfig} because `endpoint`
+	 * mode does not use them, but they are mandatory here — this function cannot
+	 * build a request path without them.
+	 */
+	config: UnblockConfig & { owner: string; repo: string }
 	/** Branch to bump — the branch of the blocked deployment. */
 	ref: string
 	/**

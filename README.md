@@ -291,12 +291,72 @@ HEAD, which is the same commit with the same author, so it is blocked
 identically. The only way out is a new commit by an authorised author.
 
 A Studio running in a browser holds no git credential, so it cannot make that
-commit itself. With `unblock` configured it dispatches a GitHub Actions workflow
-that does.
+commit itself. `unblock` gives it two ways to borrow one.
 
-### The credential split
+### Choose a mode
 
-This is the part worth understanding before enabling it.
+| | `endpoint` — **preferred** | `token` — workflow dispatch |
+|---|---|---|
+| Needs a server | yes, one API route | no |
+| GitHub credential in the bundle | **none** | one, `Actions: write` |
+| Tokens to maintain | **1** | 2 |
+| Workflow file on the default branch | not needed | required, or dispatch 404s |
+
+Use `endpoint` if you have anywhere to put an API route. Its whole advantage is
+that nothing sensitive reaches the browser, so there is only one credential and
+it is a server secret like any other.
+
+---
+
+## `endpoint` mode
+
+```ts
+vercelDeploy({
+  unblock: {
+    endpoint: 'https://example.com/api/deploy-unblock',
+  },
+})
+```
+
+That is the entire Studio-side configuration — note the absence of a token.
+
+The Studio posts `{ ref, requestedBy }` to that URL with the signed-in user's
+**Sanity session token** in an `Authorization: Bearer` header. Your route verifies
+that token against Sanity, then makes the commit with its own server-held GitHub
+token.
+
+Requirements for the route:
+
+- **Verify the session token.** Do not accept a shared secret instead — the bundle
+  is public, so a shared secret only moves the bar from "know the URL" to "open
+  devtools". Verify against
+  `https://<projectId>.api.sanity.io/v2021-06-07/users/me`. Note Sanity answers
+  `200` with a null `id` for an unauthenticated request rather than `401`.
+- **Allow the Studio's origin.** A deployed Studio is on `*.sanity.studio`, not
+  your site's domain, so every call is cross-origin and the preflight fails
+  without an allow-list. Echo one allow-listed origin; do not send `*` to an
+  endpoint that takes an `Authorization` header.
+- **Restrict which branches it will bump.** The recovery flow only ever needs the
+  branches you deploy.
+- **Answer `{ error }` on failure.** The plugin shows that string to the editor
+  verbatim, in preference to its own generic message.
+- **Serve it over https.** The plugin refuses a plaintext endpoint, because the
+  session token travels with the request. `localhost` is exempt for development.
+
+The token forwarded is `client.config().token`. Sanity only exposes it under
+token-based auth, so it can be absent under cookie-based login; the plugin
+detects that and says so, rather than sending an anonymous request and letting
+your route report it as a permissions failure.
+
+A worked Next.js Pages Router implementation is in
+[`docs/deploy-unblock-route.js`](docs/deploy-unblock-route.js).
+
+---
+
+## `token` mode — workflow dispatch
+
+For setups with no server. The Studio dispatches a GitHub Actions workflow, and
+the workflow makes the commit.
 
 ```
 Studio bundle  ──  unblock.token   Actions: write, one repo
@@ -312,8 +372,7 @@ Handing the Studio a `Contents: write` token would be far simpler and is the
 obvious first design. Do not: the Studio bundle is served publicly, so that token
 would let anyone who can load the Studio push arbitrary commits to the production
 repository — and the next build would run them. The dispatch token is scoped so
-that the worst a leak permits is *running the bump workflow*, which produces a
-version bump and a deploy.
+that the worst a leak permits is *running the bump workflow*.
 
 ### What a leaked dispatch token can actually do
 
@@ -331,61 +390,60 @@ The shipped workflow therefore opens with a branch allowlist, and a `concurrency
 group that serialises bumps per branch. Narrow the allowlist to the branches you
 actually deploy. Rotate the token if it leaks.
 
-### 1. Add the workflow
+### Setup
 
-Copy [`docs/version-bump.yml`](docs/version-bump.yml) to
-`.github/workflows/version-bump.yml` in the **site** repository, then set the git
-identity in it to the account whose commits Vercel accepts, and narrow the branch
-allowlist to the branches you deploy.
+1. Copy [`docs/version-bump.yml`](docs/version-bump.yml) to
+   `.github/workflows/version-bump.yml`, set the git identity in it to the account
+   whose commits Vercel accepts, and narrow the branch allowlist.
 
-> **The workflow file must exist on the repository's default branch**, and on
-> every branch you deploy from. GitHub resolves a dispatch against the default
-> branch's copy, then runs the copy on the requested ref. A file present only on
-> `staging` returns a 404 — which the plugin reports in full, since GitHub uses
-> the same 404 for "no such workflow" and "your token cannot see this repo".
+   > **The workflow file must exist on the repository's default branch**, and on
+   > every branch you deploy from. GitHub resolves a dispatch against the default
+   > branch's copy, then runs the copy on the requested ref. A file present only on
+   > `staging` returns a 404 — which the plugin reports in full, since GitHub uses
+   > the same 404 for "no such workflow" and "your token cannot see this repo".
 
-### 2. Add the commit credential
+2. Create a fine-grained token with **`Contents: write`** on that one repository
+   and save it as the repository Actions secret **`DEPLOY_COMMIT_TOKEN`**.
 
-Create a fine-grained token on the account whose commits Vercel accepts, scoped
-to **`Contents: write`** on that one repository, and save it as the repository
-Actions secret **`DEPLOY_COMMIT_TOKEN`**.
+   It must not be the default `GITHUB_TOKEN`: commits made with it are authored by
+   `github-actions[bot]`, which is not a team member either, so Vercel would block
+   the bump for the same reason it blocked the original commit.
 
-It must not be the default `GITHUB_TOKEN`: commits made with it are authored by
-`github-actions[bot]`, which is not a team member either, so Vercel would block
-the bump for the same reason it blocked the original commit.
+3. Create a second fine-grained token scoped to **`Actions: write`** on the same
+   repository — and nothing else — and expose it to the Studio build:
 
-### 3. Add the dispatch token
+   ```sh
+   SANITY_STUDIO_DEPLOY_UNBLOCK_GH_TOKEN=github_pat_…
+   ```
 
-Create a second fine-grained token scoped to **`Actions: write`** on the same
-repository — and nothing else — and expose it to the Studio build:
+4. Configure the plugin:
 
-```sh
-SANITY_STUDIO_DEPLOY_UNBLOCK_GH_TOKEN=github_pat_…
-```
+   ```ts
+   vercelDeploy({
+     unblock: {
+       token: process.env.SANITY_STUDIO_DEPLOY_UNBLOCK_GH_TOKEN,
+       owner: 'your-org',
+       repo: 'your-site-repo',
+       workflow: 'version-bump.yml',   // optional, this is the default
+     },
+   })
+   ```
 
-### 4. Configure the plugin
+---
 
-```ts
-vercelDeploy({
-  unblock: {
-    token: process.env.SANITY_STUDIO_DEPLOY_UNBLOCK_GH_TOKEN,
-    owner: 'your-org',
-    repo: 'your-site-repo',
-    workflow: 'version-bump.yml',   // optional, this is the default
-  },
-})
-```
+## `unblock` reference
 
 | Field | Required | Description |
 |---|---|---|
-| `token` | yes | Fine-grained token, `Actions: write` on `repo` only. Ships in the Studio bundle — treat it as public. Unset hides the button. |
-| `owner` | yes | Repository owner, e.g. `your-org` |
-| `repo` | yes | Repository name |
+| `endpoint` | one of | URL of your site route. Wins when both modes are configured. Must be https. |
+| `token` | one of | Fine-grained token, `Actions: write` on `repo` only. Ships in the Studio bundle — treat it as public. |
+| `owner` | dispatch only | Repository owner, e.g. `your-org` |
+| `repo` | dispatch only | Repository name |
 | `workflow` | no | Workflow filename. Defaults to `version-bump.yml`. |
 | `defaultRef` | no | Branch to bump when the blocked deployment names none. Normally unnecessary — the branch is read from the deployment being recovered. |
 
-An `unblock` block missing `token`, `owner` or `repo` is discarded, so a
-half-finished configuration renders no button rather than one that only errors.
+A config with neither `endpoint` nor all of `token`/`owner`/`repo` is discarded,
+so a half-finished setup renders no button rather than one that only errors.
 
 ### What the editor sees
 
@@ -394,9 +452,8 @@ not a general "deploy harder" control, and it is deliberately not offered when
 the plugin has nothing to target.
 
 Pressing it reports that the bump was **requested**. That is the honest claim:
-GitHub has accepted the dispatch, but the workflow still has to run, commit and
-push before Vercel sees anything, so the new deployment turns up a minute or two
-later. Polling picks it up on its own.
+the commit is made, but Vercel still has to notice the push and build it, so the
+new deployment turns up shortly after. Polling picks it up on its own.
 
 ### The real fix
 

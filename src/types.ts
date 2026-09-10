@@ -109,37 +109,57 @@ export type VercelDeployMode = 'direct' | 'proxy'
  * commit's git author is not a member of the Vercel team.
  *
  * The Studio cannot fix this itself — the remedy is a commit by an authorised
- * author, and a browser holds no git credential. So the button dispatches a
- * GitHub Actions workflow, and that workflow does the commit with a token held
- * in Actions secrets.
+ * author, and a browser holds no git credential. There are two ways to borrow
+ * one, and they are not equivalent:
  *
- * The split matters. {@link token} ships inside the Studio bundle and must be
- * treated as public; scope it to **Actions: write on the one repo** so the worst
- * a leak permits is running that workflow. The credential that can actually
- * write code stays in GitHub, where the browser never sees it.
+ * - **{@link endpoint} (preferred).** The Studio posts the signed-in user's
+ *   Sanity session token to a route on your own site; the route verifies it and
+ *   commits with its own server-held GitHub token. Nothing secret reaches the
+ *   browser, there is one token to maintain, and there is no workflow file whose
+ *   presence on the default branch you have to remember.
+ *
+ * - **{@link token}.** The Studio dispatches a GitHub Actions workflow directly.
+ *   Needs no server, but puts a GitHub token in the bundle, which is public.
+ *   Scope it to **Actions: write on the one repo** so the worst a leak permits is
+ *   running that workflow, and never give it `Contents: write` — a public token
+ *   that can push code is a public token that can run code on your next build.
+ *
+ * Set `endpoint` if you have anywhere to put a route. It wins when both are set.
  */
 export interface UnblockConfig {
 	/**
+	 * URL of a site API route that performs the bump server-side. **Preferred.**
+	 *
+	 * In this mode the Studio carries no GitHub credential at all. It posts the
+	 * signed-in user's Sanity session token, the route verifies it against Sanity,
+	 * and the route's own server-held GitHub token makes the commit. One token,
+	 * never public, and no workflow file to keep on the default branch.
+	 *
+	 * Takes precedence over {@link token} when both are set.
+	 */
+	endpoint?: string
+	/**
 	 * Fine-grained GitHub token, scoped to `Actions: write` on {@link repo} alone.
+	 * Only used when {@link endpoint} is not set.
 	 *
 	 * Compiled into the Studio bundle, so anyone who can load the Studio can read
 	 * it and dispatch the workflow. Never give it `Contents: write` — that would
-	 * let a reader push arbitrary commits to the production repo.
-	 *
-	 * Leave unset to hide the button entirely.
+	 * let a reader push arbitrary commits to the production repo. If you have a
+	 * server to put a route on, prefer {@link endpoint} and avoid this entirely.
 	 */
 	token?: string
-	/** Repository owner, e.g. `Liiift-Studio`. */
-	owner: string
-	/** Repository name, e.g. `the-designers-foundry`. */
-	repo: string
+	/** Repository owner, e.g. `your-org`. Required for workflow-dispatch mode only. */
+	owner?: string
+	/** Repository name. Required for workflow-dispatch mode only. */
+	repo?: string
 	/**
 	 * Workflow filename to dispatch. Defaults to `version-bump.yml`.
+	 * Workflow-dispatch mode only.
 	 *
 	 * GitHub resolves a dispatch against the workflow file **on the repository's
 	 * default branch**, then runs the copy on the requested ref — so the file must
 	 * exist on the default branch as well as on every branch you deploy from, or
-	 * the dispatch returns 404.
+	 * the dispatch returns 404. `endpoint` mode has no such constraint.
 	 */
 	workflow?: string
 	/**

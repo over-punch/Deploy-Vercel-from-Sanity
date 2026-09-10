@@ -8,7 +8,7 @@ import {
 } from '../icons'
 import { triggerDeploy } from '../lib/api'
 import { fetchDeployments as transportFetch, cancelDeploy, fetchDeploymentEvents } from '../lib/transport'
-import { dispatchVersionBump } from '../lib/github'
+import { requestUnblock } from '../lib/unblock'
 import { usePluginConfig } from '../config'
 import { useClient, useCurrentUser } from 'sanity'
 import { parseHookUrl, isActiveState, formatDuration, timeAgo, shortSha, safeHref, projectHref, githubCommitHref, deploymentHref } from '../lib/helpers'
@@ -271,10 +271,16 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		setBumping(true)
 		setBumpResult(null)
 		try {
-			await dispatchVersionBump({
+			await requestUnblock({
 				config: unblockConfig,
 				ref,
 				requestedBy: currentUser?.name || currentUser?.email || undefined,
+				// Forwarded so a site endpoint can verify the caller is a signed-in project
+				// user. Sanity only exposes this under token-based auth, so it can be
+				// absent; `requestUnblock` reports that as its own case rather than
+				// letting the server see an anonymous request and call it a permissions
+				// failure. Unused by workflow-dispatch mode.
+				studioToken: (client.config() as { token?: string }).token,
 			})
 			// Deliberately not an optimistic "deploying" state. GitHub has only accepted
 			// the dispatch; the workflow still has to run, commit and push before Vercel
@@ -296,7 +302,7 @@ export function DeployItem({ target, token, onDelete, onEdit }: DeployItemProps)
 		} finally {
 			setBumping(false)
 		}
-	}, [pluginConfig.unblock, latest?.meta?.githubCommitRef, currentUser, target.name, toast])
+	}, [pluginConfig.unblock, latest?.meta?.githubCommitRef, currentUser, target.name, toast, client])
 
 	// ── Derived display values ────────────────────────────────────────────────
 	const branch           = latest?.meta?.githubCommitRef
