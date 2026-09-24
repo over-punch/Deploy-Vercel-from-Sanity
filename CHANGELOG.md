@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@liiift-studio/deploy-vercel-from-sanity`.
+All notable changes to `@overpunch/deploy-vercel-from-sanity`.
 
 ## 1.6.0
 

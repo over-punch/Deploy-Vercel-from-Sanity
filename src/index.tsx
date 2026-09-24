@@ -24,7 +24,7 @@ export type {
  *
  * @example
  * // sanity.config.ts
- * import { vercelDeploy } from '@liiift-studio/deploy-vercel-from-sanity'
+ * import { vercelDeploy } from '@overpunch/deploy-vercel-from-sanity'
  *
  * export default defineConfig({
  *   plugins: [
