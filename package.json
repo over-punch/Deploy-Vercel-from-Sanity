@@ -72,7 +72,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Liiift-Studio/Deploy-Vercel-from-Sanity"
+    "url": "https://github.com/over-punch/Deploy-Vercel-from-Sanity"
   },
   "sideEffects": true,
   "engines": {
