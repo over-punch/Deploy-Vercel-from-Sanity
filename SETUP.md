@@ -58,11 +58,11 @@ npm link
 
 # Step 2: Link it into a studio (e.g., darden)
 cd /path/to/foundry-platform/sites/darden/sanity
-npm link @liiift-studio/deploy-vercel-from-sanity
+npm link @overpunch/deploy-vercel-from-sanity
 ```
 
 **How It Works:**
-- The studio's `node_modules/@liiift-studio/deploy-vercel-from-sanity` now points to your local development folder
+- The studio's `node_modules/@overpunch/deploy-vercel-from-sanity` now points to your local development folder
 - Vite resolves the `"source"` export condition and loads `src/index.ts` directly
 - Hot-reload works automatically on save — no `npm run build` needed during development
 
@@ -78,8 +78,8 @@ npm link @liiift-studio/deploy-vercel-from-sanity
 ```bash
 # Unlink and return to the published version
 cd /path/to/foundry-platform/sites/darden/sanity
-npm unlink @liiift-studio/deploy-vercel-from-sanity
-npm install @liiift-studio/deploy-vercel-from-sanity@latest
+npm unlink @overpunch/deploy-vercel-from-sanity
+npm install @overpunch/deploy-vercel-from-sanity@latest
 ```
 
 ### Troubleshooting npm link
@@ -90,7 +90,7 @@ npm install @liiift-studio/deploy-vercel-from-sanity@latest
 
 **Problem: Module not found**
 - Ensure you ran `npm link` in the package directory first
-- Verify the symlink exists: `ls -la node_modules/@liiift-studio/`
+- Verify the symlink exists: `ls -la node_modules/@overpunch/`
 
 **Problem: TypeScript errors in the studio**
 - The studio resolves `src/index.ts` — ensure the TypeScript source is valid before testing
@@ -131,7 +131,7 @@ npm publish
 ```
 
 **Post-Publish:**
-- Verify on npm: https://www.npmjs.com/package/@liiift-studio/deploy-vercel-from-sanity
+- Verify on npm: https://www.npmjs.com/package/@overpunch/deploy-vercel-from-sanity
 - Update consuming studios (see below)
 
 ---
@@ -142,7 +142,7 @@ npm publish
 
 ```bash
 cd sites/darden/sanity
-npm install @liiift-studio/deploy-vercel-from-sanity
+npm install @overpunch/deploy-vercel-from-sanity
 ```
 
 > If the studio uses React 19 with older packages that declare strict React peer deps, add `legacy-peer-deps=true` to the studio's `.npmrc`.
@@ -150,7 +150,7 @@ npm install @liiift-studio/deploy-vercel-from-sanity
 ### 2. Update sanity.config.js
 
 ```js
-import { vercelDeploy } from '@liiift-studio/deploy-vercel-from-sanity'
+import { vercelDeploy } from '@overpunch/deploy-vercel-from-sanity'
 
 export default defineConfig({
   plugins: [
@@ -193,13 +193,13 @@ After publishing a new version:
 
 ```bash
 # darden
-cd sites/darden/sanity && npm install @liiift-studio/deploy-vercel-from-sanity@latest
+cd sites/darden/sanity && npm install @overpunch/deploy-vercel-from-sanity@latest
 
 # tdf
-cd sites/tdf/sanity && npm install @liiift-studio/deploy-vercel-from-sanity@latest
+cd sites/tdf/sanity && npm install @overpunch/deploy-vercel-from-sanity@latest
 
 # positype
-cd sites/positype/sanity && npm install @liiift-studio/deploy-vercel-from-sanity@latest
+cd sites/positype/sanity && npm install @overpunch/deploy-vercel-from-sanity@latest
 ```
 
 ---
@@ -217,6 +217,6 @@ cd sites/positype/sanity && npm install @liiift-studio/deploy-vercel-from-sanity
       and the value is rendered to users as a watermark in the tool
 - [ ] Add a `CHANGELOG.md` entry
 - [ ] Run `npm publish`
-- [ ] Verify on npm: https://www.npmjs.com/package/@liiift-studio/deploy-vercel-from-sanity
+- [ ] Verify on npm: https://www.npmjs.com/package/@overpunch/deploy-vercel-from-sanity
 - [ ] Update consuming studios with the new version
 - [ ] Push git changes

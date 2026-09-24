@@ -2,7 +2,7 @@
 
 **Trigger and monitor Vercel deployments directly from [Sanity Studio](https://www.sanity.io) — no context switching required.**
 
-[![npm version](https://img.shields.io/npm/v/@liiift-studio/deploy-vercel-from-sanity)](https://www.npmjs.com/package/@liiift-studio/deploy-vercel-from-sanity)
+[![npm version](https://img.shields.io/npm/v/@overpunch/deploy-vercel-from-sanity)](https://www.npmjs.com/package/@overpunch/deploy-vercel-from-sanity)
 [![Sanity v3.30–v6](https://img.shields.io/badge/sanity-v3.30%20%E2%80%93%20v6-f03e2f)](https://www.sanity.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
@@ -12,7 +12,7 @@
 > to day you'll only use the **Deploy** tab — see [Using it day to day](#using-it-day-to-day).
 
 ```bash
-npm install @liiift-studio/deploy-vercel-from-sanity
+npm install @overpunch/deploy-vercel-from-sanity
 ```
 
 ---
@@ -63,7 +63,7 @@ For whoever presses the button:
 ```ts
 // sanity.config.ts
 import { defineConfig } from 'sanity'
-import { vercelDeploy } from '@liiift-studio/deploy-vercel-from-sanity'
+import { vercelDeploy } from '@overpunch/deploy-vercel-from-sanity'
 
 export default defineConfig({
   // ...
