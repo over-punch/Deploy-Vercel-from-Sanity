@@ -7,7 +7,7 @@ import type { UnblockConfig } from '../src/types'
 
 const CONFIG: UnblockConfig = {
 	token: 'ghp_test',
-	owner: 'Liiift-Studio',
+	owner: 'over-punch',
 	repo: 'the-designers-foundry',
 }
 
@@ -31,7 +31,7 @@ describe('dispatchVersionBump', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1)
 		const [url, init] = fetchMock.mock.calls[0]
 		expect(url).toBe(
-			`https://api.github.com/repos/Liiift-Studio/the-designers-foundry/actions/workflows/${DEFAULT_WORKFLOW}/dispatches`,
+			`https://api.github.com/repos/over-punch/the-designers-foundry/actions/workflows/${DEFAULT_WORKFLOW}/dispatches`,
 		)
 		expect(init.method).toBe('POST')
 		expect(init.headers.Authorization).toBe('Bearer ghp_test')

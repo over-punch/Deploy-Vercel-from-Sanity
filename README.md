@@ -6,7 +6,7 @@
 [![Sanity v3.30–v6](https://img.shields.io/badge/sanity-v3.30%20%E2%80%93%20v6-f03e2f)](https://www.sanity.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-![The Deploy tool inside Sanity Studio — Production and Preview targets each showing a live status badge, branch, commit SHA, deploy author, and a one-click Deploy button](https://raw.githubusercontent.com/Liiift-Studio/Deploy-Vercel-from-Sanity/main/docs/screenshot.png?v=1)
+![The Deploy tool inside Sanity Studio — Production and Preview targets each showing a live status badge, branch, commit SHA, deploy author, and a one-click Deploy button](https://raw.githubusercontent.com/over-punch/Deploy-Vercel-from-Sanity/main/docs/screenshot.png?v=1)
 
 > **Using Sanity but not setting it up?** Your developer installs this once. Day
 > to day you'll only use the **Deploy** tab — see [Using it day to day](#using-it-day-to-day).
@@ -575,7 +575,7 @@ typecheck and tests before building, so a release cannot ship past them.
 
 ## Contributing
 
-Issues and pull requests welcome at [github.com/Liiift-Studio/Deploy-Vercel-from-Sanity](https://github.com/Liiift-Studio/Deploy-Vercel-from-Sanity).
+Issues and pull requests welcome at [github.com/over-punch/Deploy-Vercel-from-Sanity](https://github.com/over-punch/Deploy-Vercel-from-Sanity).
 
 Local development, `npm link`, and publishing steps are documented in [SETUP.md](./SETUP.md).
 
